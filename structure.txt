@@ -1,0 +1,17 @@
+StudyPilot/
+│
+├── main.py
+│
+├── database/
+│   ├── database.py
+│   └── models.py
+│
+├── ui/
+│
+├── services/
+│
+├── assets/
+│
+├── documents/
+│
+└── generated/

@@ -1,0 +1,5 @@
+study_pilot.db
+__pycache__/
+*.pyc
+tempCodeRunnerFile.py
+.env
