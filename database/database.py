@@ -94,6 +94,26 @@ def create_tables():
             REFERENCES users(user_id)
         )
     """)
+    
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS class_routine (
+        routine_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        course_id INTEGER NOT NULL,
+        day_of_week TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+
+        FOREIGN KEY (user_id)
+            REFERENCES users(user_id),
+            
+        FOREIGN KEY (course_id)
+            REFERENCES users(course_id)
+        )
+    """)
+
+    con.commit()
+    con.close()
 
 
 def add_user(name, email):
@@ -187,6 +207,37 @@ def add_availability(user_id, day_of_week, start_time, end_time):
     con.commit()
     con.close()
 
+def add_class_routine(user_id, course_id, day_of_week, start_time, end_time):
+    con = get_connection()
+    cur = con.cursor()
+    
+    cur.execute("""
+        INSERT INTO class_routine (user_id, course_id, day_of_week, start_time, end_time)
+        VALUES 
+            (?, ?, ?, ?, ?)
+    """,(user_id, course_id, day_of_week, start_time, end_time))
+    
+    con.commit()
+    con.close()
+
+def update_class_routine(routine_id, course_id, day_of_week, start_time, end_time):
+    con = get_connection()
+    cur = con.cursor()
+    
+    cur.execute("""
+            UPDATE class_routine
+            SET 
+                course_id = ?,
+                day_of_week = ?,
+                start_time = ?,
+                end_time = ?
+            WHERE
+                routine_id = ?
+    """,(course_id, day_of_week, start_time, end_time,routine_id))
+
+    con.commit()
+    con.close()
+
 def complete_assignment(assignment_id):
     con = get_connection()
     cur = con.cursor()
@@ -237,7 +288,19 @@ def delete_course(course_id):
 
     con.commit()
     con.close()
+
+def delete_class_routine(routine_id):
+    con = get_connection()
+    cur = con.cursor()
     
+    cur.execute("""
+        DELETE FROM class_routine
+        WHERE routine_id = ?
+    """,(routine_id,))
+    
+    con.commit()
+    con.close() 
+      
 def get_users():
     con = get_connection()
     cur = con.cursor()
@@ -512,3 +575,26 @@ def get_availability(user_id):
     con.close()
 
     return availability
+
+def get_class_routines(user_id):
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT
+            r.routine_id,
+            c.course_title,
+            r.day_of_week,
+            r.start_time,
+            r.end_time
+        FROM class_routine AS r
+        JOIN courses AS c
+            ON r.course_id = c.course_id
+        WHERE r.user_id = ?
+    """, (user_id,))
+
+    routines = cur.fetchall()
+
+    con.close()
+
+    return routines
