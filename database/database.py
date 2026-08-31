@@ -191,6 +191,19 @@ def complete_study_session(session_id):
     con.commit()
     con.close()
 
+def complete_study_plan(plan_id):
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        UPDATE study_plans
+        SET completed = 1
+        WHERE plan_id = ?
+    """, (plan_id,))
+
+    con.commit()
+    con.close()
+
 def delete_course(course_id):
     con=get_connection()
     cur=con.cursor()
@@ -336,7 +349,7 @@ def get_total_study_time():
 
     return total_minutes
 
-def get_study_plan():
+def get_study_plans():
     con = get_connection()
     cur = con.cursor()
     
@@ -363,4 +376,20 @@ def get_study_plans_with_courses():
     plans=cur.fetchall()
     con.close()
     return plans
-         
+
+def get_course_study_time(course_id):
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT COALESCE(SUM(duration_minutes), 0)
+        FROM study_sessions
+        WHERE course_id = ?
+        AND completed = 1
+    """, (course_id,))
+
+    total_minutes = cur.fetchone()[0]
+
+    con.close()
+
+    return total_minutes
