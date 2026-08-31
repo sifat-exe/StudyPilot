@@ -1,9 +1,7 @@
 import sqlite3
 
-
 def get_connection():
     return sqlite3.connect("study_pilot.db")
-
 
 def create_tables():
     con = get_connection()
@@ -16,6 +14,7 @@ def create_tables():
             email TEXT UNIQUE NOT NULL
         )
     """)
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS courses (
             course_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,8 +82,18 @@ def create_tables():
         )
     """)
 
-    con.commit()
-    con.close()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS availability (
+        availability_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        day_of_week TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+
+        FOREIGN KEY (user_id)
+            REFERENCES users(user_id)
+        )
+    """)
 
 
 def add_user(name, email):
@@ -162,6 +171,19 @@ def add_study_plan(course_id,study_date,duration_minutes,task):
             (?,?,?,?)
     """,(course_id, study_date, duration_minutes, task))
     
+    con.commit()
+    con.close()
+
+def add_availability(user_id, day_of_week, start_time, end_time):
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        INSERT INTO availability
+        (user_id, day_of_week, start_time, end_time)
+        VALUES (?, ?, ?, ?)
+    """, (user_id, day_of_week, start_time, end_time))
+
     con.commit()
     con.close()
 
@@ -449,6 +471,7 @@ def get_upcoming_assignments():
     return assignments
 
 def get_upcoming_exams():
+    
     con = get_connection()
     cur = con.cursor()
     
@@ -469,3 +492,23 @@ def get_upcoming_exams():
     con.close()
 
     return exams
+
+def get_availability(user_id):
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT
+            availability_id,
+            day_of_week,
+            start_time,
+            end_time
+        FROM availability
+        WHERE user_id = ?
+    """, (user_id,))
+
+    availability = cur.fetchall()
+
+    con.close()
+
+    return availability
