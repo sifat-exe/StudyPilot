@@ -29,10 +29,46 @@ class Dashboard(QWidget):
         title_label.setFont(QFont("Segoe UI", 16, QFont.Bold))
         title_label.setStyleSheet("color: #2d3748;")
         
+        from PySide6.QtWidgets import QMenu
         user_menu = QPushButton(f"👤 {self.user_info['name']} ▼")
         user_menu.setFlat(True)
         user_menu.setCursor(QCursor(Qt.PointingHandCursor))
-        user_menu.setStyleSheet("color: #4a5568; font-weight: bold; border: none;")
+        user_menu.setStyleSheet("""
+            QPushButton {
+                color: #4a5568; 
+                font-weight: bold; 
+                border: none;
+                padding: 6px 12px;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #edf2f7;
+            }
+            QPushButton::menu-indicator {
+                image: none;
+            }
+        """)
+        
+        self.user_dropdown = QMenu(self)
+        self.user_dropdown.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                border: 1px solid #cbd5e0;
+                border-radius: 8px;
+                padding: 5px;
+            }
+            QMenu::item {
+                padding: 8px 20px;
+                border-radius: 4px;
+                color: #2d3748;
+            }
+            QMenu::item:selected {
+                background-color: #edf2f7;
+                color: #2b6cb0;
+            }
+        """)
+        self.logout_action = self.user_dropdown.addAction("🚪  Logout")
+        user_menu.setMenu(self.user_dropdown)
         
         top_layout.addWidget(title_label)
         top_layout.addStretch()

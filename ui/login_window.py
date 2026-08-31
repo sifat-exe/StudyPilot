@@ -7,10 +7,10 @@ from PySide6.QtGui import QFont, QColor, QCursor
 class LoginWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("StudyPilot - Login")
-        self.resize(1000, 600)
+        self.setWindowTitle("StudyPilot")
+        self.resize(1000, 700)
         self.setStyleSheet("background-color: #f0f4f8;")
-        self.setMinimumSize(800, 500)
+        self.setMinimumSize(900, 650)
         
         # Main layout
         main_layout = QHBoxLayout(self)
@@ -49,15 +49,16 @@ class LoginWindow(QWidget):
         left_layout.addStretch()
         
         # Graphic placeholder / decorative element
-        graphic_label = QLabel("📋✓ Your\n    Study Journey\n    Starts Here")
-        graphic_label.setFont(QFont("Segoe UI", 20, QFont.Bold))
+        graphic_label = QLabel("📋Your Study Journey\n     Starts Here ✓")
+        graphic_label.setFont(QFont("Segoe UI", 19, QFont.Bold))
         graphic_label.setStyleSheet("color: #8fb1e9; background-color: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px;")
         graphic_label.setAlignment(Qt.AlignCenter)
         left_layout.addWidget(graphic_label)
         left_layout.addStretch()
         
-        quote_label = QLabel("\"A better you,\na brighter tomorrow.\"")
+        quote_label = QLabel("\"A better you, a brighter tomorrow.\"")
         quote_label.setFont(QFont("Segoe UI", 16, italic=True))
+        quote_label.setStyleSheet("color: #a0aec0;")
         left_layout.addWidget(quote_label)
         
         # Right Panel (Login Form)

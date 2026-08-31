@@ -22,6 +22,7 @@ class MainWindow(QMainWindow):
         # Sidebar
         self.sidebar = Sidebar(self.user_info)
         self.sidebar.toggle_btn.clicked.connect(self.toggle_sidebar)
+        self.sidebar.logout_btn.clicked.connect(self.handle_logout)
         self.main_layout.addWidget(self.sidebar)
         
         # Content Area
@@ -30,8 +31,15 @@ class MainWindow(QMainWindow):
         
         # Dashboard
         self.dashboard = Dashboard(self.user_info)
+        self.dashboard.logout_action.triggered.connect(self.handle_logout)
         self.content_area.addWidget(self.dashboard)
         
     def toggle_sidebar(self):
         self.sidebar.toggle()
+
+    def handle_logout(self):
+        from ui.login_window import LoginWindow
+        self.login_window = LoginWindow()
+        self.login_window.show()
+        self.close()
 

@@ -126,13 +126,31 @@ class Sidebar(QFrame):
         name_role.addWidget(role_lbl)
         name_role.setSpacing(0)
         
-        logout_btn = QPushButton("🚪")
-        logout_btn.setFixedSize(32, 32)
-        logout_btn.setStyleSheet("background: transparent; color: #94a3b8;")
+        self.logout_btn = QPushButton("Logout")
+        self.logout_btn.setFixedHeight(30)
+        self.logout_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.logout_btn.setToolTip("Logout")
+        self.logout_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1e293b;
+                color: #ffffff;
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 6px;
+                border: 1px solid #334155;
+                padding: 0 8px;
+            }
+            QPushButton:hover {
+                background-color: #ef4444;
+                color: white;
+                border: 1px solid #ef4444;
+            }
+        """)
         
         profile_layout.addWidget(avatar)
-        profile_layout.addLayout(name_role)
-        profile_layout.addWidget(logout_btn)
+        profile_layout.addSpacing(5)
+        profile_layout.addLayout(name_role, 1)
+        profile_layout.addWidget(self.logout_btn)
         
         self.layout.addWidget(self.profile_frame)
         
