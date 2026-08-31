@@ -425,3 +425,25 @@ def  get_completed_study_plan_count():
     con.close()
 
     return count
+
+def get_upcoming_assignments():
+    con = get_connection()
+    cur = con.cursor()
+    
+    cur.execute("""
+        SELECT 
+            a.assignment_id,
+            c.course_title,
+            a.title,
+            a.deadline,
+            a.completed
+        FROM assignments AS a
+        JOIN courses AS c
+            ON a.course_id=c.course_id
+        WHERE a.completed = 0
+        ORDER BY a.deadline
+    """)
+    
+    assignments=cur.fetchall()
+    con.close()
+    return assignments
