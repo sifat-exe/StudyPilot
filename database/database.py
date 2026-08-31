@@ -393,3 +393,19 @@ def get_course_study_time(course_id):
     con.close()
 
     return total_minutes
+
+def get_completed_assignment_count():
+    con = get_connection()
+    cur = con.cursor()
+    
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM assignments
+        WHERE completed = 1
+    """)
+
+    count=cur.fetchone()[0]
+
+    con.close() 
+
+    return count
