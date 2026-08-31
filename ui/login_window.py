@@ -63,7 +63,7 @@ class LoginWindow(QWidget):
         
         # Right Panel (Login Form)
         right_panel = QFrame()
-        right_panel.setStyleSheet("background-color: #f0f4f8;")
+        right_panel.setStyleSheet("background-color: #ffffff;")
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(60, 40, 60, 40)
         
@@ -93,7 +93,7 @@ class LoginWindow(QWidget):
         
         # Inputs
         self.email_input = QLineEdit()
-        self.email_input.setPlaceholderText("✉  Email or username")
+        self.email_input.setPlaceholderText("Email or username")
         self.email_input.setMinimumHeight(45)
         self.email_input.setStyleSheet("""
             QLineEdit {
@@ -115,26 +115,26 @@ class LoginWindow(QWidget):
         pass_layout.setSpacing(0)
         
         self.password_input = QLineEdit()
-        self.password_input.setPlaceholderText("🔒  Password")
+        self.password_input.setPlaceholderText("Password")
         self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.setMinimumHeight(45)
         self.password_input.setStyleSheet("""
             QLineEdit {
-                padding: 10px 15px;
-                border: 1px solid #cbd5e0;
-                border-top-left-radius: 8px;
-                border-bottom-left-radius: 8px;
-                border-top-right-radius: 0px;
-                border-bottom-right-radius: 0px;
-                background-color: white;
-                font-size: 14px;
-                color: #2d3748;
-                border-right: none;
-            }
-            QLineEdit:focus {
-                border: 2px solid #3182ce;
-                border-right: none;
-            }
+                            padding: 10px 15px;
+                            border: 1px solid #cbd5e0;
+                            border-top-left-radius: 8px;
+                            border-bottom-left-radius: 8px;
+                            border-top-right-radius: 0px;
+                            border-bottom-right-radius: 0px;
+                            background-color: white;
+                            font-size: 14px;
+                            color: #2d3748;
+                            border-right: none;
+                        }
+                        QLineEdit:focus {
+                            border: 2px solid #3182ce;
+ 
+                        }
         """)
         
         self.show_pass_btn = QPushButton("👁")
@@ -167,8 +167,8 @@ class LoginWindow(QWidget):
         remember_cb = QCheckBox("Remember me")
         remember_cb.setFont(QFont("Segoe UI", 10))
         remember_cb.setStyleSheet("""
-            QCheckBox { color: #4a5568; }
-            QCheckBox::indicator { width: 15px; height: 15px; }
+            QCheckBox { color: #000000; }
+            QCheckBox::indicator { width: 15px; height: 15px;}
         """)
         
         forgot_btn = QPushButton("Forgot password?")
@@ -180,6 +180,8 @@ class LoginWindow(QWidget):
         options_layout.addWidget(remember_cb)
         options_layout.addStretch()
         options_layout.addWidget(forgot_btn)
+
+    # have to implement forget_btn button's work here like forgot_btn.clicked.connect(...)
         
         # Login Button
         self.login_btn = QPushButton("Login")
@@ -207,6 +209,7 @@ class LoginWindow(QWidget):
         line1 = QFrame(); line1.setFrameShape(QFrame.HLine); line1.setStyleSheet("color: #e2e8f0;")
         line2 = QFrame(); line2.setFrameShape(QFrame.HLine); line2.setStyleSheet("color: #e2e8f0;")
         or_label = QLabel("OR")
+        or_label.setAlignment(Qt.AlignCenter)
         or_label.setStyleSheet("color: #a0aec0; font-size: 12px;")
         divider_layout.addWidget(line1)
         divider_layout.addWidget(or_label)
@@ -215,7 +218,7 @@ class LoginWindow(QWidget):
         # Register section
         register_layout = QHBoxLayout()
         
-        register_btn = QPushButton("Don't have an account? Register")
+        register_btn = QPushButton("Don't have an account?\nRegister")
         register_btn.setFlat(True)
         register_btn.setMinimumHeight(45)
         register_btn.setCursor(QCursor(Qt.PointingHandCursor))
@@ -231,7 +234,9 @@ class LoginWindow(QWidget):
             }
         """)
         register_layout.addWidget(register_btn)
-        
+
+    # have to implement register_btn button's work here like register_btn.clicked.connect(...)
+    
         # Add widgets to card
         card_layout.addWidget(welcome_label)
         card_layout.addWidget(subtitle_label)
@@ -264,7 +269,7 @@ class LoginWindow(QWidget):
     def toggle_password_visibility(self):
         if self.password_input.echoMode() == QLineEdit.Password:
             self.password_input.setEchoMode(QLineEdit.Normal)
-            self.show_pass_btn.setText("🙈")
+            self.show_pass_btn.setText("🚫")
         else:
             self.password_input.setEchoMode(QLineEdit.Password)
             self.show_pass_btn.setText("👁")
