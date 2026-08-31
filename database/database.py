@@ -447,3 +447,25 @@ def get_upcoming_assignments():
     assignments=cur.fetchall()
     con.close()
     return assignments
+
+def get_upcoming_exams():
+    con = get_connection()
+    cur = con.cursor()
+    
+    cur.execute("""
+        SELECT
+            e.exam_id,
+            c.course_title,
+            e.exam_title,
+            e.exam_date
+        FROM exams AS e
+        JOIN courses AS c
+            ON e.course_id = c.course_id
+        ORDER BY e.exam_date
+    """)
+    
+    exams = cur.fetchall()
+
+    con.close()
+
+    return exams
