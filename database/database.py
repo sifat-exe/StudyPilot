@@ -409,3 +409,19 @@ def get_completed_assignment_count():
     con.close() 
 
     return count
+
+def  get_completed_study_plan_count():
+    con = get_connection()
+    cur = con.cursor()
+    
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM study_plans
+        WHERE completed = 1
+    """)
+
+    count = cur.fetchone()[0]
+   
+    con.close()
+
+    return count
