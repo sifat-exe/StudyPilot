@@ -93,7 +93,7 @@ class LoginWindow(QWidget):
         
         # Inputs
         self.email_input = QLineEdit()
-        self.email_input.setPlaceholderText("Email or username")
+        self.email_input.setPlaceholderText("Email")
         self.email_input.setMinimumHeight(45)
         self.email_input.setStyleSheet("""
             QLineEdit {
