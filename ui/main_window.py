@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QStackedWidget
+from PySide6.QtWidgets import QMainWindow, QLabel
 from ui.sidebar import Sidebar
 from ui.dashboard import Dashboard
 
@@ -11,7 +12,13 @@ class MainWindow(QMainWindow):
         self.resize(1200, 800)
         self.setMinimumSize(900, 600)
         self.setStyleSheet("background-color: #f5f7fa;")
-        
+
+        welcome_label = QLabel(
+            f"Welcome, {self.user_info['name']}!"
+        )
+
+        self.setCentralWidget(welcome_label)
+
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
