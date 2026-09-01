@@ -4,7 +4,6 @@ from data.dummy_auth_provider import DummyAuthProvider
 
 class AuthService:
     """Service layer that handles authentication logic, separating UI from Data."""
-    
     def __init__(self):
         if USE_DUMMY_DATA:
             self.provider = DummyAuthProvider()
@@ -19,10 +18,12 @@ class AuthService:
     def login(self, email_or_username, password):
         """
         Attempts to authenticate a user.
-        Returns user dictionary if successful, None if failed.
+        Returns user information if successful, None if failed.
         """
         if not email_or_username or not password:
             return None
-            
-        return self.provider.authenticate(email_or_username, password)
 
+        return self.provider.authenticate(
+            email_or_username,
+            password
+        )
