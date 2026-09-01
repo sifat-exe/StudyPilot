@@ -7,7 +7,7 @@ from PySide6.QtGui import QFont, QColor, QCursor
 class LoginWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("StudyPilot")
+        self.setWindowTitle("StudyPilot - Login")
         self.resize(1000, 700)
         self.setStyleSheet("background-color: #f0f4f8;")
         self.setMinimumSize(900, 650)
@@ -235,7 +235,7 @@ class LoginWindow(QWidget):
         """)
         register_layout.addWidget(register_btn)
 
-    # have to implement register_btn button's work here like register_btn.clicked.connect(...)
+        register_btn.clicked.connect(self.open_register_window)
     
         # Add widgets to card
         card_layout.addWidget(welcome_label)
@@ -345,3 +345,8 @@ class LoginWindow(QWidget):
         except Exception as e:
             self.show_message_box(QMessageBox.Critical, "System Error", f"An error occurred during login: {str(e)}")
 
+    def open_register_window(self):
+        from ui.register_window import RegisterWindow
+        self.register_window = RegisterWindow()
+        self.register_window.show()
+        self.close()

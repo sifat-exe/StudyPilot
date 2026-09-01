@@ -1,3 +1,5 @@
+study_pilot.db
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+tempCodeRunnerFile.py
+.env
