@@ -1,7 +1,39 @@
 import sqlite3
+import hashlib
+import os
+
 
 def get_connection():
     return sqlite3.connect("study_pilot.db")
+
+def hash_password(password):
+    salt = os.urandom(16)
+
+    password_hash = hashlib.scrypt(
+        password.encode(),
+        salt=salt,
+        n=16384,
+        r=8,
+        p=1
+    )
+
+    return salt.hex() + ":" + password_hash.hex()
+
+def verify_password(password, stored_hash):
+    salt_hex, hash_hex = stored_hash.split(":")
+
+    salt = bytes.fromhex(salt_hex)
+    stored_password_hash = bytes.fromhex(hash_hex)
+
+    password_hash = hashlib.scrypt(
+        password.encode(),
+        salt=salt,
+        n=16384,
+        r=8,
+        p=1
+    )
+
+    return password_hash == stored_password_hash
 
 def create_tables():
     con = get_connection()
@@ -115,7 +147,6 @@ def create_tables():
     con.commit()
     con.close()
 
-
 def add_user(name, email):
     con = get_connection()
     cur = con.cursor()
@@ -219,6 +250,49 @@ def add_class_routine(user_id, course_id, day_of_week, start_time, end_time):
     
     con.commit()
     con.close()
+
+def register_user(name, email, password):
+    con = get_connection()
+    cur = con.cursor()
+
+    password_hash = hash_password(password)
+
+    cur.execute("""
+        INSERT INTO users
+        (name, email, password_hash)
+        VALUES (?, ?, ?)
+    """, (name, email, password_hash))
+
+    con.commit()
+    con.close()
+
+def authenticate_user(email, password):
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT user_id, name, email, password_hash
+        FROM users
+        WHERE email = ?
+    """, (email,))
+
+    user = cur.fetchone()
+
+    con.close()
+
+    if user is None:
+        return None
+
+    user_id, name, email, password_hash = user
+
+    if verify_password(password, password_hash):
+        return {
+            "user_id": user_id,
+            "name": name,
+            "email": email
+        }
+
+    return None
 
 def update_class_routine(routine_id, course_id, day_of_week, start_time, end_time):
     con = get_connection()
