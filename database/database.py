@@ -1,10 +1,15 @@
 import sqlite3
 import hashlib
 import os
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DB_PATH = BASE_DIR / "study_pilot.db"
 
 
 def get_connection():
-    return sqlite3.connect("study_pilot.db")
+    return sqlite3.connect(DB_PATH)
 
 def hash_password(password):
     salt = os.urandom(16)
@@ -140,7 +145,7 @@ def create_tables():
             REFERENCES users(user_id),
             
         FOREIGN KEY (course_id)
-            REFERENCES users(course_id)
+            REFERENCES courses(course_id)
         )
     """)
 
@@ -651,6 +656,7 @@ def get_availability(user_id):
     return availability
 
 def get_class_routines(user_id):
+    
     con = get_connection()
     cur = con.cursor()
 
@@ -672,3 +678,213 @@ def get_class_routines(user_id):
     con.close()
 
     return routines
+
+
+
+from datetime import date, timedelta
+
+def get_dashboard_summary(user_id):
+
+    con = get_connection()
+    cur = con.cursor()
+
+    today = date.today().isoformat()
+    week_start = (date.today() - timedelta(days=6)).isoformat()
+
+    # TODAY'S PROGRESS
+    
+    cur.execute("""
+        SELECT
+            COUNT(*),
+            COALESCE(SUM(completed), 0)
+        FROM study_plans AS s
+        JOIN courses AS c
+            ON s.course_id = c.course_id
+        WHERE c.user_id = ?
+        AND s.study_date = ?
+    """, (user_id, today))
+
+    total_today, completed_today = cur.fetchone()
+
+    if total_today:
+        percentage = int((completed_today / total_today) * 100)
+    else:
+        percentage = 0
+
+    today_progress = {
+        "completed": completed_today,
+        "total": total_today,
+        "percentage": percentage
+    }
+
+    # WEEKLY STATS
+
+    cur.execute("""
+        SELECT
+            COALESCE(SUM(s.duration_minutes), 0),
+            COUNT(*)
+        FROM study_sessions AS s
+        JOIN courses AS c
+            ON s.course_id = c.course_id
+        WHERE c.user_id = ?
+        AND s.session_date BETWEEN ? AND ?
+        AND s.completed = 1
+    """, (user_id, week_start, today))
+
+
+    cur.execute("""
+    SELECT DISTINCT session_date
+    FROM study_sessions AS s
+    JOIN courses AS c
+        ON s.course_id = c.course_id
+    WHERE c.user_id = ?
+    AND s.completed = 1
+        ORDER BY session_date DESC
+    """, (user_id,))
+
+    study_dates = [row[0] for row in cur.fetchall()]
+
+    streak = 0
+    check_date = date.today()
+
+    for study_date in study_dates:
+        if study_date == check_date.isoformat():
+            streak += 1
+            check_date -= timedelta(days=1)
+        elif study_date < check_date.isoformat():
+            break
+
+        weekly_minutes, weekly_sessions = cur.fetchone()
+
+    weekly_stats = {
+        "hours": round(weekly_minutes / 60, 1),
+        "sessions": weekly_sessions,
+        "streak": streak
+    }
+
+
+    # TODAY'S SCHEDULE
+
+    cur.execute("""
+        SELECT
+            s.study_date,
+            c.course_title,
+            s.task,
+            s.completed
+        FROM study_plans AS s
+        JOIN courses AS c
+            ON s.course_id = c.course_id
+        WHERE c.user_id = ?
+        AND s.study_date = ?
+        ORDER BY s.study_date
+    """, (user_id, today))
+
+    schedule_rows = cur.fetchall()
+
+    schedule = []
+
+    for row in schedule_rows:
+        study_date, course, task, completed = row
+
+        schedule.append({
+            "time": "",
+            "course": course,
+            "topic": task,
+            "status": "Completed" if completed else "Pending"
+        })
+
+
+    # UPCOMING DEADLINES
+
+
+    cur.execute("""
+        SELECT
+            a.title,
+            c.course_title,
+            a.deadline
+        FROM assignments AS a
+        JOIN courses AS c
+            ON a.course_id = c.course_id
+        WHERE c.user_id = ?
+        AND a.completed = 0
+        AND a.deadline >= ?
+        ORDER BY a.deadline
+        LIMIT 5
+    """, (user_id, today))
+
+    assignment_rows = cur.fetchall()
+
+    deadlines = []
+
+    for title, course, deadline in assignment_rows:
+
+        try:
+            days = (
+                date.fromisoformat(deadline) - date.today()
+            ).days
+
+            if days == 0:
+                due = "Today"
+            elif days == 1:
+                due = "1 day"
+            else:
+                due = f"{days} days"
+
+        except ValueError:
+            due = deadline
+
+        deadlines.append({
+            "title": title,
+            "subtitle": f"Assignment • {course}",
+            "due": due,
+            "color": "#e53e3e"
+        })
+
+
+    # COURSE PROGRESS
+  
+
+    cur.execute("""
+        SELECT
+            c.course_id,
+            c.course_title,
+
+            COUNT(s.plan_id),
+            COALESCE(SUM(s.completed), 0)
+
+        FROM courses AS c
+
+        LEFT JOIN study_plans AS s
+            ON c.course_id = s.course_id
+
+        WHERE c.user_id = ?
+
+        GROUP BY c.course_id, c.course_title
+    """, (user_id,))
+
+    course_rows = cur.fetchall()
+
+    courses = []
+
+    for course_id, course_title, total, completed in course_rows:
+
+        if total:
+            progress = int((completed / total) * 100)
+        else:
+            progress = 0
+
+        courses.append({
+            "name": course_title,
+            "progress": progress,
+            "color": "#3182ce"
+        })
+
+    con.close()
+
+    return {
+        "today_progress": today_progress,
+        "weekly_stats": weekly_stats,
+        "schedule": schedule,
+        "deadlines": deadlines,
+        "courses": courses
+    }
