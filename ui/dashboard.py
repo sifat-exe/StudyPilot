@@ -301,12 +301,12 @@ class Dashboard(QWidget):
         
         course_layout.addLayout(course_head)
         course_layout.addSpacing(15)
-        
+
+
+        ## Added the real courses
         courses = [
-            ("Data Structures", 70, "#3182ce"),
-            ("Object Oriented Programming", 55, "#38a169"),
-            ("Discrete Mathematics", 80, "#805ad5"),
-            ("Electrical Machines", 45, "#dd6b20")
+        (course["name"], course["progress"], "#3182ce")
+        for course in data["courses"]
         ]
         
         c_grid = QGridLayout()
