@@ -1,6 +1,7 @@
 # services/dashboard_service.py
 from config import USE_DUMMY_DATA
 from data.dummy_dashboard_provider import DummyDashboardProvider
+from data.real_dashboard_provider import RealDashboardProvider
 
 class DashboardService:
     """Service layer for fetching dashboard data."""
@@ -10,7 +11,7 @@ class DashboardService:
             self.provider = DummyDashboardProvider()
         else:
             # TODO (Sifat): Create a RealDashboardProvider that uses your database functions
-            # self.provider = RealDashboardProvider()
+            self.provider = RealDashboardProvider()
             
             # Temporary fallback
             print("WARNING: Real database dashboard not implemented yet. Falling back to dummy data.")
