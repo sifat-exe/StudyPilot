@@ -4,7 +4,7 @@ import os
 
 
 def get_connection():
-    return sqlite3.connect("study_pilot.db")
+    return sqlite3.connect("study_pilot.db", timeout=10.0)
 
 def hash_password(password):
     salt = os.urandom(16)
@@ -375,6 +375,30 @@ def delete_class_routine(routine_id):
     
     con.commit()
     con.close() 
+
+def delete_assignment(assignment_id):
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        DELETE FROM assignments
+        WHERE assignment_id = ?
+    """, (assignment_id,))
+
+    con.commit()
+    con.close()
+
+def delete_exam(exam_id):
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        DELETE FROM exams
+        WHERE exam_id = ?
+    """, (exam_id,))
+
+    con.commit()
+    con.close()
       
 def get_users():
     con = get_connection()
@@ -439,45 +463,70 @@ def get_exams():
     con.close()
     return exams
 
-def get_assignments_with_courses():
-    
+def get_assignments_with_courses(user_id=None):
     con = get_connection()
     cur = con.cursor()
 
-    cur.execute("""
-        SELECT
-            courses.course_title,
-            assignments.title,
-            assignments.deadline,
-            assignments.completed
-        FROM assignments
-        JOIN courses 
-            ON assignments.course_id=courses.course_id
-    """)
+    if user_id is not None:
+        cur.execute("""
+            SELECT
+                courses.course_code,
+                assignments.title,
+                assignments.deadline,
+                assignments.completed,
+                assignments.assignment_id
+            FROM assignments
+            JOIN courses 
+                ON assignments.course_id=courses.course_id
+            WHERE courses.user_id = ?
+        """, (user_id,))
+    else:
+        cur.execute("""
+            SELECT
+                courses.course_code,
+                assignments.title,
+                assignments.deadline,
+                assignments.completed,
+                assignments.assignment_id
+            FROM assignments
+            JOIN courses 
+                ON assignments.course_id=courses.course_id
+        """)
 
     assignments = cur.fetchall()
-
     con.close()
-
     return assignments
 
-def get_exams_with_courses():
+def get_exams_with_courses(user_id=None):
     con = get_connection()
     cur = con.cursor()
     
-    cur.execute("""
-        SELECT 
-            courses.course_title,
-            exams.exam_title,
-            exams.exam_date
-        FROM exams 
-        JOIN courses 
-        ON exams.course_id=courses.course_id
-    """)
+    if user_id is not None:
+        cur.execute("""
+            SELECT 
+                courses.course_code,
+                exams.exam_title,
+                exams.exam_date,
+                exams.exam_id
+            FROM exams 
+            JOIN courses 
+                ON exams.course_id=courses.course_id
+            WHERE courses.user_id = ?
+        """, (user_id,))
+    else:
+        cur.execute("""
+            SELECT 
+                courses.course_code,
+                exams.exam_title,
+                exams.exam_date,
+                exams.exam_id
+            FROM exams 
+            JOIN courses 
+                ON exams.course_id=courses.course_id
+        """)
 
-    exams=cur.fetchall()
+    exams = cur.fetchall()
     con.close()
-
     return exams
 
 def get_study_sessions():
