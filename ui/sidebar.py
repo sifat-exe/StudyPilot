@@ -83,7 +83,8 @@ class Sidebar(QFrame):
             ("Class Tests", "📋"),
             ("Study Planner", "🎯"),
             ("Progress", "📈"),
-            ("Notifications", "🔔")
+            ("Notifications", "🔔"),
+            ("Profile", "👤")
         ]
         
         self.buttons = []
@@ -112,17 +113,17 @@ class Sidebar(QFrame):
         
         # Use first letter of name for avatar
         initial = self.user_info["name"][0].upper() if self.user_info["name"] else "U"
-        avatar = QLabel(initial)
-        avatar.setFixedSize(32, 32)
-        avatar.setAlignment(Qt.AlignCenter)
-        avatar.setStyleSheet("background-color: #3b82f6; color: white; border-radius: 16px; font-weight: bold;")
+        self.avatar = QLabel(initial)
+        self.avatar.setFixedSize(32, 32)
+        self.avatar.setAlignment(Qt.AlignCenter)
+        self.avatar.setStyleSheet("background-color: #3b82f6; color: white; border-radius: 16px; font-weight: bold;")
         
         name_role = QVBoxLayout()
-        name_lbl = QLabel(self.user_info["name"])
-        name_lbl.setStyleSheet("color: white; font-weight: bold; font-size: 13px;")
+        self.name_lbl = QLabel(self.user_info["name"])
+        self.name_lbl.setStyleSheet("color: white; font-weight: bold; font-size: 13px;")
         role_lbl = QLabel("Student")
         role_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
-        name_role.addWidget(name_lbl)
+        name_role.addWidget(self.name_lbl)
         name_role.addWidget(role_lbl)
         name_role.setSpacing(0)
         
@@ -147,7 +148,7 @@ class Sidebar(QFrame):
             }
         """)
         
-        profile_layout.addWidget(avatar)
+        profile_layout.addWidget(self.avatar)
         profile_layout.addSpacing(5)
         profile_layout.addLayout(name_role, 1)
         profile_layout.addWidget(self.logout_btn)
@@ -155,6 +156,13 @@ class Sidebar(QFrame):
         self.layout.addWidget(self.profile_frame)
         
         self.setFixedWidth(260)
+
+    def update_user_display(self, user_info):
+        self.user_info = user_info or self.user_info
+        name = self.user_info.get("name") or "Student"
+        self.name_lbl.setText(name)
+        initial = name[0].upper() if name else "U"
+        self.avatar.setText(initial)
         
     def toggle(self):
         self.is_expanded = not self.is_expanded

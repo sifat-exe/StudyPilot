@@ -1,0 +1,42 @@
+{
+    "1": [
+        {
+            "material_id": 1,
+            "user_id": 1,
+            "course_id": 4,
+            "course_code": "EEE 2151",
+            "file_name": "DC Generator.pdf",
+            "file_path": "D:\\Academics\\UNIVERSITY\\RUET CSE\\2-1\\CSE 2100\\StudyPilot\\study_materials\\user_1\\course_4\\DC Generator.pdf",
+            "uploaded_at": "2026-09-22 22:22:07"
+        },
+        {
+            "material_id": 2,
+            "user_id": 1,
+            "course_id": 9,
+            "course_code": "Hum 2113",
+            "file_name": "Socialization_and_Social_Structure_Master_Study_Guide.pdf",
+            "file_path": "D:\\Academics\\UNIVERSITY\\RUET CSE\\2-1\\CSE 2100\\StudyPilot\\study_materials\\user_1\\course_9\\Socialization_and_Social_Structure_Master_Study_Guide.pdf",
+            "uploaded_at": "2026-09-22 22:54:03"
+        },
+        {
+            "material_id": 3,
+            "user_id": 1,
+            "course_id": 4,
+            "course_code": "EEE 2151",
+            "file_name": "Transformer_CSE.pdf",
+            "file_path": "D:\\Academics\\UNIVERSITY\\RUET CSE\\2-1\\CSE 2100\\StudyPilot\\study_materials\\user_1\\course_4\\Transformer_CSE.pdf",
+            "uploaded_at": "2026-09-22 22:55:35"
+        }
+    ],
+    "4": [
+        {
+            "material_id": 1,
+            "user_id": 4,
+            "course_id": 10,
+            "course_code": "Hum 2113",
+            "file_name": "Social Stratification .pdf",
+            "file_path": "D:\\Academics\\UNIVERSITY\\RUET CSE\\2-1\\CSE 2100\\StudyPilot\\study_materials\\user_4\\course_10\\Social Stratification .pdf",
+            "uploaded_at": "2026-09-22 22:25:06"
+        }
+    ]
+}

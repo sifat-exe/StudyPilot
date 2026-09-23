@@ -6,13 +6,15 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QFont, QCursor
 from services.academic_service import AcademicService
-from ui.dialog_helpers import DUMMY_COURSES, setup_dark_dialog, TABLE_STYLE
+from services.profile_service import ProfileService
+from ui.dialog_helpers import setup_dark_dialog, TABLE_STYLE
 
 class ClassTestPage(QWidget):
     def __init__(self, user_info=None):
         super().__init__()
         self.user_info = user_info or {"user_id": None}
         self.service = AcademicService()
+        self.profile_service = ProfileService()
         self.init_ui()
 
     def init_ui(self):
@@ -94,9 +96,13 @@ class ClassTestPage(QWidget):
         d_layout = QFormLayout(dialog)
         d_layout.setSpacing(12)
 
-        # 1. Course dropdown
+        # 1. Course dropdown (from Profile / database)
         course_combo = QComboBox()
-        course_combo.addItems(DUMMY_COURSES)
+        course_labels = self.profile_service.get_course_labels(self.user_info.get("user_id"))
+        if not course_labels:
+            QMessageBox.warning(self, "No Courses", "Please add your courses in the Profile page first.")
+            return
+        course_combo.addItems(course_labels)
 
         # 2. Topic
         topic_in = QLineEdit()

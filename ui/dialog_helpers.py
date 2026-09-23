@@ -101,3 +101,48 @@ def setup_dark_dialog(dialog):
     palette.setColor(QPalette.ButtonText, QColor("#ffffff"))
     dialog.setPalette(palette)
     dialog.setStyleSheet(DIALOG_STYLE)
+
+
+def show_dark_message_box(parent, icon, title, message):
+    """Shows a dark-themed QMessageBox styled consistently with Login and CT message boxes."""
+    from PySide6.QtWidgets import QMessageBox
+    msg = QMessageBox(parent)
+    msg.setIcon(icon)
+    msg.setWindowTitle(title)
+    msg.setText(message)
+
+    palette = msg.palette()
+    palette.setColor(QPalette.Window, QColor("#1e293b"))
+    palette.setColor(QPalette.WindowText, QColor("#ffffff"))
+    palette.setColor(QPalette.Base, QColor("#1e293b"))
+    palette.setColor(QPalette.Text, QColor("#ffffff"))
+    palette.setColor(QPalette.Button, QColor("#2563eb"))
+    palette.setColor(QPalette.ButtonText, QColor("#ffffff"))
+    msg.setPalette(palette)
+
+    msg.setStyleSheet("""
+        QMessageBox, QDialog, QWidget {
+            background-color: #1e293b;
+            color: #ffffff;
+        }
+        QLabel {
+            color: #ffffff;
+            background-color: transparent;
+            font-size: 14px;
+        }
+        QPushButton {
+            background-color: #2563eb;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 20px;
+            font-weight: bold;
+            font-size: 13px;
+            min-width: 70px;
+        }
+        QPushButton:hover {
+            background-color: #1d4ed8;
+        }
+    """)
+    msg.exec()
+
