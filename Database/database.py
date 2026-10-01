@@ -347,6 +347,34 @@ def add_class_routine(user_id, course_id, day_of_week, start_time, end_time):
     con.commit()
     con.close()
 
+def add_study_material(user_id: int, course_id: int, file_name: str, file_path: str) -> int:
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        INSERT INTO study_materials (
+            user_id,
+            course_id,
+            file_name,
+            file_path,
+            uploaded_at
+        )
+        VALUES (?, ?, ?, ?, ?)
+    """, (
+        user_id,
+        course_id,
+        file_name,
+        file_path,
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ))
+
+    material_id = cur.lastrowid
+
+    con.commit()
+    con.close()
+
+    return material_id
+
 
 # ============================================================
 # AUTHENTICATION
