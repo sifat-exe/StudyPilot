@@ -170,7 +170,7 @@ def create_tables():
         )
     """)
 
-        cur.execute("""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS study_materials (
             material_id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -375,6 +375,61 @@ def add_study_material(user_id: int, course_id: int, file_name: str, file_path: 
 
     return material_id
 
+def save_pdf_analysis(material_id: int, analysis_data: dict) -> int:
+    con = get_connection()
+    cur = con.cursor()
+
+    try:
+        cur.execute("""
+            INSERT INTO pdf_analyses (
+                material_id,
+                page_count,
+                extraction_method,
+                extracted_text,
+                meaningful_pages,
+                meaningful_ratio,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            material_id,
+            analysis_data["page_count"],
+            analysis_data["extraction_method"],
+            analysis_data["extracted_text"],
+            analysis_data["meaningful_pages"],
+            analysis_data["meaningful_ratio"],
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
+
+        analysis_id = cur.lastrowid
+
+        for topic in analysis_data["topics"]:
+            cur.execute("""
+                INSERT INTO topic_summaries (
+                    analysis_id,
+                    title,
+                    summary,
+                    key_points_json,
+                    order_index
+                )
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                analysis_id,
+                topic["title"],
+                topic["summary"],
+                json.dumps(topic["key_points"]),
+                topic["order_index"]
+            ))
+
+        con.commit()
+        return analysis_id
+
+    except Exception:
+        con.rollback()
+        raise
+
+    finally:
+        con.close()
 
 # ============================================================
 # AUTHENTICATION
@@ -504,7 +559,6 @@ def delete_course(course_id):
     con.commit()
     con.close()
 
-
 def delete_class_routine(routine_id):
     con = get_connection()
     cur = con.cursor()
@@ -516,7 +570,6 @@ def delete_class_routine(routine_id):
 
     con.commit()
     con.close()
-
 
 def delete_assignment(assignment_id):
     con = get_connection()
@@ -530,7 +583,6 @@ def delete_assignment(assignment_id):
     con.commit()
     con.close()
 
-
 def delete_exam(exam_id):
     con = get_connection()
     cur = con.cursor()
@@ -543,6 +595,37 @@ def delete_exam(exam_id):
     con.commit()
     con.close()
 
+def delete_study_material(material_id: int) -> bool:
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        DELETE FROM study_materials
+        WHERE material_id = ?
+    """, (material_id,))
+
+    deleted = cur.rowcount > 0
+
+    con.commit()
+    con.close()
+
+    return deleted
+
+def delete_pdf_analysis(material_id: int) -> bool:
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        DELETE FROM pdf_analyses
+        WHERE material_id = ?
+    """, (material_id,))
+
+    deleted = cur.rowcount > 0
+
+    con.commit()
+    con.close()
+
+    return deleted
 
 # ============================================================
 # BASIC GET FUNCTIONS
@@ -561,7 +644,6 @@ def get_users():
     con.close()
 
     return users
-
 
 def get_courses():
     con = get_connection()
@@ -583,7 +665,6 @@ def get_courses():
 
     return courses
 
-
 def get_assignments():
     con = get_connection()
     cur = con.cursor()
@@ -603,7 +684,6 @@ def get_assignments():
 
     return assignments
 
-
 def get_exams():
     con = get_connection()
     cur = con.cursor()
@@ -621,7 +701,6 @@ def get_exams():
     con.close()
 
     return exams
-
 
 def get_study_sessions():
     con = get_connection()
@@ -641,7 +720,6 @@ def get_study_sessions():
     con.close()
 
     return sessions
-
 
 def get_study_plans():
     con = get_connection()
@@ -664,6 +742,65 @@ def get_study_plans():
 
     return plans
 
+def get_pdf_analysis(material_id: int) -> dict | None:
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT
+            analysis_id,
+            material_id,
+            page_count,
+            extraction_method,
+            extracted_text,
+            meaningful_pages,
+            meaningful_ratio
+        FROM pdf_analyses
+        WHERE material_id = ?
+    """, (material_id,))
+
+    analysis = cur.fetchone()
+
+    if analysis is None:
+        con.close()
+        return None
+
+    analysis_id = analysis[0]
+
+    cur.execute("""
+        SELECT
+            topic_id,
+            title,
+            summary,
+            key_points_json,
+            order_index
+        FROM topic_summaries
+        WHERE analysis_id = ?
+        ORDER BY order_index
+    """, (analysis_id,))
+
+    topics = cur.fetchall()
+    con.close()
+
+    return {
+        "analysis_id": analysis[0],
+        "material_id": analysis[1],
+        "page_count": analysis[2],
+        "extraction_method": analysis[3],
+        "extracted_text": analysis[4],
+        "meaningful_pages": analysis[5],
+        "meaningful_ratio": analysis[6],
+        "topics": [
+            {
+                "topic_id": topic[0],
+                "title": topic[1],
+                "summary": topic[2],
+                "key_points": json.loads(topic[3]),
+                "order_index": topic[4]
+            }
+            for topic in topics
+        ]
+    }
 
 # ============================================================
 # JOINED GET FUNCTIONS
@@ -816,6 +953,41 @@ def get_availability(user_id):
 
     return availability
 
+def get_study_materials_by_user(user_id: int) -> list[dict]:
+    con = get_connection()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT
+            m.material_id,
+            m.user_id,
+            m.course_id,
+            c.course_code,
+            m.file_name,
+            m.file_path,
+            m.uploaded_at
+        FROM study_materials AS m
+        JOIN courses AS c
+            ON m.course_id = c.course_id
+        WHERE m.user_id = ?
+        ORDER BY m.uploaded_at DESC
+    """, (user_id,))
+
+    rows = cur.fetchall()
+    con.close()
+
+    return [
+        {
+            "material_id": row[0],
+            "user_id": row[1],
+            "course_id": row[2],
+            "course_code": row[3],
+            "file_name": row[4],
+            "file_path": row[5],
+            "uploaded_at": row[6]
+        }
+        for row in rows
+    ]
 
 # ============================================================
 # STATISTICS
