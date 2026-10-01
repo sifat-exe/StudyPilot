@@ -1,5 +1,5 @@
 # data/real_academic_provider.py
-from database.database import (
+from Database.database import (
     get_class_routines, add_class_routine, update_class_routine, delete_class_routine,
     get_assignments_with_courses, add_assignment, complete_assignment, delete_assignment,
     get_exams_with_courses, add_exam, delete_exam,

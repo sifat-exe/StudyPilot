@@ -1,4 +1,4 @@
-from database.database import authenticate_user
+from Database.database import authenticate_user
 
 
 class RealDatabaseAuthProvider:
@@ -15,7 +15,7 @@ class RealDatabaseAuthProvider:
         2. The existing register_user(name, email, password) function
            (already exists in Database/database.py)
         """
-        from database.database import register_user
+        from Database.database import register_user
 
         # TODO: Sifat needs to add an email_exists() function to database.py
         # For now, we try to register and catch the unique constraint error

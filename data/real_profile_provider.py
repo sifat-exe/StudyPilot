@@ -11,7 +11,7 @@
 #   update_course(course_id, course_code, course_title)
 # Existing functions already used: add_course, delete_course, get_connection
 
-from database.database import get_connection, add_course, delete_course
+from Database.database import get_connection, add_course, delete_course
 
 PROFILE_COLUMNS = ("university", "roll", "year", "semester")
 

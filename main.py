@@ -1,5 +1,5 @@
 import sys
-from database.database import create_tables      
+from Database.database import create_tables      
 from PySide6.QtWidgets import QApplication
 from ui.login_window import LoginWindow
 

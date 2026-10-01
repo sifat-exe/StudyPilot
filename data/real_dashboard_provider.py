@@ -1,4 +1,4 @@
-from database.database import (
+from Database.database import (
     get_class_routines, get_upcoming_assignments, get_upcoming_exams,
     get_completed_assignment_count, get_total_study_time, get_courses
 )
