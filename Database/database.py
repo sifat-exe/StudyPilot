@@ -1,8 +1,9 @@
 import sqlite3
 import hashlib
 import os
+import json
 from pathlib import Path
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 
 # ============================================================
@@ -14,9 +15,9 @@ DB_PATH = BASE_DIR / "study_pilot.db"
 
 
 def get_connection():
-    """Return a connection to the StudyPilot SQLite database."""
-    return sqlite3.connect(DB_PATH, timeout=10.0)
-
+    con = sqlite3.connect(DB_PATH, timeout=10.0)
+    con.execute("PRAGMA foreign_keys = ON")
+    return con
 
 # ============================================================
 # PASSWORD SECURITY
@@ -166,6 +167,49 @@ def create_tables():
 
             FOREIGN KEY (course_id)
                 REFERENCES courses(course_id)
+        )
+    """)
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS study_materials (
+            material_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            course_id INTEGER NOT NULL,
+            file_name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            uploaded_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(user_id),
+            FOREIGN KEY (course_id) REFERENCES courses(course_id)
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS pdf_analyses (
+            analysis_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            material_id INTEGER NOT NULL UNIQUE,
+            page_count INTEGER NOT NULL,
+            extraction_method TEXT NOT NULL,
+            extracted_text TEXT NOT NULL,
+            meaningful_pages INTEGER NOT NULL,
+            meaningful_ratio REAL NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (material_id)
+                REFERENCES study_materials(material_id)
+                ON DELETE CASCADE
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS topic_summaries (
+            topic_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            analysis_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            key_points_json TEXT NOT NULL,
+            order_index INTEGER NOT NULL,
+            FOREIGN KEY (analysis_id)
+                REFERENCES pdf_analyses(analysis_id)
+                ON DELETE CASCADE
         )
     """)
 
