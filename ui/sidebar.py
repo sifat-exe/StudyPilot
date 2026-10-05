@@ -82,8 +82,8 @@ class Sidebar(QFrame):
             ("Assignments", "📝"),
             ("Class Tests", "📋"),
             ("Study Planner", "🎯"),
-            ("Progress", "📈"),
-            ("Notifications", "🔔"),
+            # ("Progress", "📈"),
+            # ("Notifications", "🔔"),
             ("Profile", "👤")
         ]
         

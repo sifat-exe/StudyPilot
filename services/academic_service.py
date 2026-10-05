@@ -35,6 +35,9 @@ class AcademicService:
     def delete_assignment(self, index_or_id):
         return self.provider.delete_assignment(index_or_id)
 
+    def update_assignment_status(self, assignment_id, completed: bool):
+        return self.provider.update_assignment_status(assignment_id, completed)
+
     # Class Tests
     def get_class_tests(self, user_id):
         return self.provider.get_class_tests(user_id)

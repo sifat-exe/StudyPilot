@@ -69,5 +69,75 @@ class StudyMaterialService:
             "material": material
         }
 
-    def delete_material(self, material_id):
-        return delete_study_material(material_id)
+    def delete_material(self, material_or_id):
+        """
+        Deletes a study material:
+          1. Removes AI analysis records from DB (pdf_analyses & topic_summaries).
+          2. Removes study_materials DB record.
+          3. Removes the physical PDF file from disk.
+        """
+        if isinstance(material_or_id, dict):
+            material_id = material_or_id.get("material_id")
+            file_path = material_or_id.get("file_path")
+        else:
+            material_id = material_or_id
+            file_path = None
+
+        if material_id:
+            try:
+                from Database.database import delete_pdf_analysis
+                delete_pdf_analysis(material_id)
+            except Exception as e:
+                print(f"[StudyMaterialService] Error deleting PDF analysis: {e}")
+
+            delete_study_material(material_id)
+
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                print(f"[StudyMaterialService] Error removing PDF file: {e}")
+
+        return True
+
+
+    def get_analysis(self, material_id: int):
+        from Database.database import get_pdf_analysis
+        return get_pdf_analysis(material_id)
+
+    def save_analysis(self, material_id: int, result):
+        from Database.database import save_pdf_analysis
+        from services.ai_provider import is_valid_summary_text
+
+        if not result or not getattr(result, "success", False) or not getattr(result, "topics", None):
+            return None
+
+        valid_topics = []
+        for t in result.topics:
+            title = getattr(t, "title", "") or (t.get("title") if isinstance(t, dict) else "")
+            summary = getattr(t, "summary", "") or (t.get("summary") if isinstance(t, dict) else "")
+            key_points = getattr(t, "key_points", []) if hasattr(t, "key_points") else (t.get("key_points", []) if isinstance(t, dict) else [])
+            order_index = getattr(t, "order_index", 1) if hasattr(t, "order_index") else (t.get("order_index", 1) if isinstance(t, dict) else 1)
+
+            if is_valid_summary_text(summary):
+                valid_topics.append({
+                    "title": title,
+                    "summary": summary,
+                    "key_points": key_points,
+                    "order_index": order_index
+                })
+
+        if not valid_topics:
+            print("[StudyMaterialService] No valid topic summaries to save; skipping DB save.")
+            return None
+
+        analysis_data = {
+            "page_count": result.page_count,
+            "extraction_method": result.extraction_method,
+            "extracted_text": result.extracted_text,
+            "meaningful_pages": result.meaningful_pages,
+            "meaningful_ratio": result.meaningful_ratio,
+            "topics": valid_topics
+        }
+        return save_pdf_analysis(material_id, analysis_data)
+

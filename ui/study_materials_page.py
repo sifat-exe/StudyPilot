@@ -9,7 +9,38 @@ from PySide6.QtGui import QFont, QCursor, QDesktopServices
 from services.study_material_service import StudyMaterialService
 from services.pdf_extraction_service import PDFExtractionService
 from services.topic_identification_service import TopicIdentificationService
+from services.pdf_analysis_service import PDFAnalysisService
+from services.pdf_analysis_models import PDFAnalysisResult, TopicSummary
 from ui.dialog_helpers import setup_dark_dialog, show_dark_message_box
+
+
+class PDFAnalysisWorker(QThread):
+    """
+    Background worker thread running the complete 3-stage PDF Analysis pipeline
+    without freezing the PySide6 UI loop.
+    """
+    progress = Signal(int, int)
+    status = Signal(str)
+    finished = Signal(object)
+
+    def __init__(self, analysis_service, file_path):
+        super().__init__()
+        self.analysis_service = analysis_service
+        self.file_path = file_path
+
+    def run(self):
+        def on_progress(current, total):
+            self.progress.emit(current, total)
+
+        def on_status(message):
+            self.status.emit(message)
+
+        result = self.analysis_service.analyze_pdf(
+            self.file_path,
+            progress_callback=on_progress,
+            status_callback=on_status
+        )
+        self.finished.emit(result)
 
 
 class PDFExtractionWorker(QThread):
@@ -34,9 +65,6 @@ class TopicIdentificationWorker(QThread):
     """
     Background worker thread to run Gemini topic identification
     without freezing the PySide6 main UI.
-
-    Emits:
-        finished(TopicResult) — when topic identification completes.
     """
     finished = Signal(object)
 
@@ -57,8 +85,8 @@ class StudyMaterialsPage(QWidget):
         self.service = StudyMaterialService()
         self.pdf_service = PDFExtractionService()
         self.topic_service = TopicIdentificationService()
-        self._active_worker = None        # PDF extraction worker reference
-        self._active_topic_worker = None  # Topic identification worker reference
+        self.analysis_service = PDFAnalysisService()
+        self._active_worker = None
         self.init_ui()
 
     def init_ui(self):
@@ -178,14 +206,26 @@ class StudyMaterialsPage(QWidget):
                     file_lbl.setFont(QFont("Segoe UI", 12, QFont.Bold))
                     file_lbl.setStyleSheet("color: #1e293b; background-color: transparent;")
 
-                    # Extract / Analyze Text Action Button
-                    extract_btn = QPushButton("🔍 Extract Text")
-                    extract_btn.setCursor(QCursor(Qt.PointingHandCursor))
-                    extract_btn.setStyleSheet(
-                        "background-color: #0f172a; color: #38bdf8; border: 1px solid #334155; "
-                        "border-radius: 5px; padding: 5px 12px; font-weight: bold; font-size: 12px;"
-                    )
-                    extract_btn.clicked.connect(lambda _, m=mat: self.analyze_material(m))
+                    # Check if AI analysis exists in DB for this material
+                    material_id = mat.get("material_id")
+                    existing_analysis = self.service.get_analysis(material_id) if material_id else None
+
+                    if existing_analysis and existing_analysis.get("topics"):
+                        action_btn = QPushButton("📋 Summary")
+                        action_btn.setCursor(QCursor(Qt.PointingHandCursor))
+                        action_btn.setStyleSheet(
+                            "background-color: #7c3aed; color: white; border: 1px solid #6d28d9; "
+                            "border-radius: 5px; padding: 5px 14px; font-weight: bold; font-size: 12px;"
+                        )
+                        action_btn.clicked.connect(lambda _, m=mat, a=existing_analysis: self.show_saved_summary_dialog(m, a))
+                    else:
+                        action_btn = QPushButton("🔍 Extract Text")
+                        action_btn.setCursor(QCursor(Qt.PointingHandCursor))
+                        action_btn.setStyleSheet(
+                            "background-color: #0f172a; color: #38bdf8; border: 1px solid #334155; "
+                            "border-radius: 5px; padding: 5px 12px; font-weight: bold; font-size: 12px;"
+                        )
+                        action_btn.clicked.connect(lambda _, m=mat: self.analyze_material(m))
 
                     # Open PDF Button
                     open_btn = QPushButton("Open")
@@ -196,10 +236,20 @@ class StudyMaterialsPage(QWidget):
                     )
                     open_btn.clicked.connect(lambda _, m=mat: self.open_material(m))
 
+                    # Delete PDF Button
+                    del_btn = QPushButton("Delete")
+                    del_btn.setCursor(QCursor(Qt.PointingHandCursor))
+                    del_btn.setStyleSheet(
+                        "background-color: #ef4444; color: white; border-radius: 5px; "
+                        "padding: 5px 12px; font-weight: bold; font-size: 12px;"
+                    )
+                    del_btn.clicked.connect(lambda _, m=mat: self.confirm_and_delete_material(m))
+
                     item_layout.addWidget(file_lbl)
                     item_layout.addStretch()
-                    item_layout.addWidget(extract_btn)
+                    item_layout.addWidget(action_btn)
                     item_layout.addWidget(open_btn)
+                    item_layout.addWidget(del_btn)
 
                     card_layout.addWidget(item_frame)
 
@@ -207,97 +257,240 @@ class StudyMaterialsPage(QWidget):
 
         self.scroll_layout.addStretch()
 
+    def confirm_and_delete_material(self, material: dict):
+        """
+        Prompts confirmation and deletes material from DB, storage folder, and UI.
+        """
+        file_name = material.get("file_name", "this material")
+        reply = QMessageBox.question(
+            self,
+            "Delete Study Material",
+            f"Are you sure you want to delete '{file_name}'?\nThis will remove the file, database records, and AI summaries.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            try:
+                self.service.delete_material(material)
+                self.load_data()
+                show_dark_message_box(
+                    self, QMessageBox.Information, "Deleted",
+                    f"'{file_name}' has been successfully deleted."
+                )
+            except Exception as e:
+                show_dark_message_box(
+                    self, QMessageBox.Critical, "Delete Failed", str(e)
+                )
+
+
     def analyze_material(self, material):
         """
-        Runs the full PDF Analysis pipeline:
-          1. PDF text extraction (native / OCR) — background QThread.
-          2. Main topic identification via Gemini AI — second background QThread.
+        Runs the full 3-stage PDF Analysis pipeline (Extraction, Topic Identification, Summary & Main Points Generation)
+        in a background QThread, persists the result to the database, and displays the summary.
         """
         file_path = material.get("file_path")
         if not file_path or not os.path.exists(file_path):
             show_dark_message_box(self, QMessageBox.Warning, "File Not Found", "The PDF file could not be found.")
             return
 
-        # ── Stage 1: PDF Extraction Progress Dialog ────────────────────────────
-        progress_dialog = QProgressDialog("Evaluating PDF text & preparing extraction...", "Cancel", 0, 100, self)
-        progress_dialog.setWindowTitle("PDF Extraction Progress")
+        progress_dialog = QProgressDialog("Initializing PDF Analysis...", None, 0, 100, self)
+        progress_dialog.setWindowTitle("PDF Analysis Pipeline")
         progress_dialog.setWindowModality(Qt.WindowModal)
         setup_dark_dialog(progress_dialog)
-        progress_dialog.setAutoClose(True)
         progress_dialog.show()
 
-        extraction_worker = PDFExtractionWorker(self.pdf_service, file_path)
+        worker = PDFAnalysisWorker(self.analysis_service, file_path)
 
         def update_progress(current, total):
             progress_dialog.setMaximum(total)
             progress_dialog.setValue(current)
-            progress_dialog.setLabelText(f"Processing Page {current} of {total}...\nPlease wait.")
 
-        def on_extraction_finished(extraction_result):
-            """Called when PDF extraction completes. Immediately starts topic identification."""
+        def update_status(msg):
+            progress_dialog.setLabelText(f"{msg}\nPlease wait...")
+
+        def on_finished(result: PDFAnalysisResult):
             progress_dialog.close()
+            material_id = material.get("material_id")
 
-            # If extraction itself failed, show the dialog now (no topics to fetch).
-            if not extraction_result.success or not extraction_result.extracted_text.strip():
-                self.show_extraction_preview_dialog(extraction_result, topic_result=None)
-                return
+            # Persist successful analysis result to database ONLY if result.success is True
+            # and result contains valid topics.
+            saved_id = None
+            if result and result.success and result.topics and material_id:
+                try:
+                    saved_id = self.service.save_analysis(material_id, result)
+                except Exception as e:
+                    print(f"Error saving analysis to DB: {e}")
 
-            # ── Stage 2: Topic Identification Progress Dialog ──────────────────
-            topic_dialog = QProgressDialog(
-                "Identifying main topics using AI...\nThis may take a few seconds.",
-                None,  # No cancel button — keep it simple
-                0, 0,  # Indeterminate (spinner) mode
-                self
-            )
-            topic_dialog.setWindowTitle("Topic Identification")
-            topic_dialog.setWindowModality(Qt.WindowModal)
-            setup_dark_dialog(topic_dialog)
-            topic_dialog.show()
+            # Reload data to immediately update action button to '📋 Summary' if saved
+            self.load_data()
 
-            topic_worker = TopicIdentificationWorker(self.topic_service, extraction_result.extracted_text)
-
-            def on_topics_finished(topic_result):
-                """Called when Gemini returns topics. Opens the combined preview dialog."""
-                topic_dialog.close()
-                self.show_extraction_preview_dialog(extraction_result, topic_result=topic_result)
-
-            topic_worker.finished.connect(on_topics_finished)
-            self._active_topic_worker = topic_worker  # Keep reference to prevent GC
-            topic_worker.start()
-
-        extraction_worker.progress.connect(update_progress)
-        extraction_worker.finished.connect(on_extraction_finished)
-
-        self._active_worker = extraction_worker  # Keep reference to prevent GC
-        extraction_worker.start()
+            if not result or not result.success:
+                err_msg = (result.error_message if result else None) or "Summary generation is temporarily unavailable. Please try again."
+                show_dark_message_box(
+                    self, QMessageBox.Warning, "PDF Analysis Status", err_msg
+                )
+            else:
+                saved_analysis = self.service.get_analysis(material_id) if material_id else None
+                if saved_analysis and saved_analysis.get("topics"):
+                    self.show_saved_summary_dialog(material, saved_analysis)
+                elif result.topics:
+                    self.show_analysis_result_dialog(result)
+                else:
+                    show_dark_message_box(
+                        self, QMessageBox.Warning, "PDF Analysis Status",
+                        "Summary generation is temporarily unavailable. Please try again."
+                    )
 
 
-    def show_extraction_preview_dialog(self, result, topic_result=None):
+        worker.progress.connect(update_progress)
+        worker.status.connect(update_status)
+        worker.finished.connect(on_finished)
+
+        self._active_worker = worker
+        worker.start()
+
+    def show_saved_summary_dialog(self, material: dict, analysis: dict):
         """
-        Displays the PDF analysis results dialog.
-
-        Shows:
-          - File metadata (name, extraction method, page/char counts)
-          - Identified main topics (if topic_result provided)
-          - Read-only extracted text preview
-
-        Parameters
-        ----------
-        result : PDFExtractionResult
-            Returned by PDFExtractionService.
-        topic_result : TopicResult or None
-            Returned by TopicIdentificationService. None if skipped due to extraction failure.
+        Displays saved topic summaries retrieved from database (excluding extracted text preview).
         """
         dialog = QDialog(self)
-        dialog.setWindowTitle("PDF Analysis Results")
-        dialog.resize(700, 680)
+        file_name = material.get("file_name", "Document.pdf")
+        dialog.setWindowTitle(f"PDF Summary — {file_name}")
+        dialog.resize(720, 560)
         setup_dark_dialog(dialog)
 
         d_layout = QVBoxLayout(dialog)
         d_layout.setContentsMargins(20, 20, 20, 20)
         d_layout.setSpacing(14)
 
-        # ── Title & Meta Info Card ─────────────────────────────────────────────
+        # Header Metadata Card
+        meta_card = QFrame()
+        meta_card.setStyleSheet("QFrame { background-color: #0f172a; border-radius: 8px; border: 1px solid #334155; }")
+        meta_layout = QVBoxLayout(meta_card)
+        meta_layout.setContentsMargins(15, 12, 15, 12)
+
+        file_label = QLabel(f"📄 {file_name}")
+        file_label.setFont(QFont("Segoe UI", 14, QFont.Bold))
+        file_label.setStyleSheet("color: #38bdf8; background-color: transparent;")
+
+        stats_layout = QHBoxLayout()
+        method_badge = f"Method: {analysis.get('extraction_method', 'Native')}"
+        method_color = "#34d399" if analysis.get('extraction_method') == "Native" else "#fbbf24"
+        method_lbl = QLabel(f"<b>{method_badge}</b>")
+        method_lbl.setStyleSheet(f"color: {method_color}; font-size: 13px; background-color: #1e293b; padding: 3px 8px; border-radius: 4px;")
+
+        pages_lbl = QLabel(f"Pages: <b>{analysis.get('page_count', 1)}</b>")
+        pages_lbl.setStyleSheet("color: #cbd5e0; font-size: 13px; background-color: transparent;")
+
+        stats_layout.addWidget(method_lbl)
+        stats_layout.addSpacing(15)
+        stats_layout.addWidget(pages_lbl)
+        stats_layout.addStretch()
+
+        meta_layout.addWidget(file_label)
+        meta_layout.addLayout(stats_layout)
+        d_layout.addWidget(meta_card)
+
+        # Topics & Summaries Section
+        topics = analysis.get("topics", [])
+        topics_card = QFrame()
+        topics_card.setStyleSheet("QFrame { background-color: #0f172a; border-radius: 8px; border: 1px solid #334155; }")
+        topics_card_layout = QVBoxLayout(topics_card)
+        topics_card_layout.setContentsMargins(15, 14, 15, 14)
+        topics_card_layout.setSpacing(10)
+
+        topics_header = QLabel(f"🧠 Main Topics & Summaries ({len(topics)} topics)")
+        topics_header.setFont(QFont("Segoe UI", 13, QFont.Bold))
+        topics_header.setStyleSheet("color: #a78bfa; background-color: transparent;")
+        topics_card_layout.addWidget(topics_header)
+
+        if not topics:
+            no_topics_lbl = QLabel("No saved topics available.")
+            no_topics_lbl.setStyleSheet("color: #94a3b8; font-size: 12px; font-style: italic; background-color: transparent;")
+            topics_card_layout.addWidget(no_topics_lbl)
+        else:
+            topics_scroll = QScrollArea()
+            topics_scroll.setWidgetResizable(True)
+            topics_scroll.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
+
+            topics_container = QWidget()
+            topics_vbox = QVBoxLayout(topics_container)
+            topics_vbox.setContentsMargins(0, 0, 0, 0)
+            topics_vbox.setSpacing(12)
+
+            for topic_item in topics:
+                t_frame = QFrame()
+                t_frame.setStyleSheet(
+                    "QFrame { background-color: #1e293b; border-radius: 6px; "
+                    "border-left: 4px solid #a78bfa; border-top: 1px solid #334155; "
+                    "border-right: 1px solid #334155; border-bottom: 1px solid #334155; }"
+                )
+                t_layout = QVBoxLayout(t_frame)
+                t_layout.setContentsMargins(12, 10, 12, 10)
+                t_layout.setSpacing(6)
+
+                t_title = QLabel(f"<b>{topic_item.get('order_index', 1)}. {topic_item.get('title', 'Topic')}</b>")
+                t_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
+                t_title.setStyleSheet("color: #38bdf8; background-color: transparent;")
+                t_layout.addWidget(t_title)
+
+                if topic_item.get("summary"):
+                    summary_hdr = QLabel("Summary:")
+                    summary_hdr.setFont(QFont("Segoe UI", 10, QFont.Bold))
+                    summary_hdr.setStyleSheet("color: #cbd5e0; background-color: transparent;")
+                    t_layout.addWidget(summary_hdr)
+
+                    summary_txt = QLabel(topic_item.get("summary"))
+                    summary_txt.setWordWrap(True)
+                    summary_txt.setStyleSheet("color: #f8fafc; font-size: 12px; background-color: transparent; line-height: 1.4;")
+                    t_layout.addWidget(summary_txt)
+
+                key_points = topic_item.get("key_points", [])
+                if key_points:
+                    kp_hdr = QLabel("Main Points:")
+                    kp_hdr.setFont(QFont("Segoe UI", 10, QFont.Bold))
+                    kp_hdr.setStyleSheet("color: #cbd5e0; background-color: transparent; padding-top: 4px;")
+                    t_layout.addWidget(kp_hdr)
+
+                    for kp in key_points:
+                        kp_lbl = QLabel(f"  • {kp}")
+                        kp_lbl.setWordWrap(True)
+                        kp_lbl.setStyleSheet("color: #e2e8f0; font-size: 12px; background-color: transparent;")
+                        t_layout.addWidget(kp_lbl)
+
+                topics_vbox.addWidget(t_frame)
+
+            topics_scroll.setWidget(topics_container)
+            topics_card_layout.addWidget(topics_scroll)
+
+        d_layout.addWidget(topics_card)
+
+        # Close Button
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        close_btn = QPushButton("Close")
+        close_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        close_btn.setStyleSheet(
+            "background-color: #2563eb; color: white; border-radius: 6px; "
+            "padding: 8px 22px; font-weight: bold;"
+        )
+        close_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(close_btn)
+        d_layout.addLayout(btn_layout)
+
+        dialog.exec()
+
+    def show_analysis_result_dialog(self, result: PDFAnalysisResult):
+        """Fallback dialog for fresh analysis results if DB save fails."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"PDF Analysis Results — {result.file_name}")
+        dialog.resize(720, 560)
+        setup_dark_dialog(dialog)
+
+        d_layout = QVBoxLayout(dialog)
+        d_layout.setContentsMargins(20, 20, 20, 20)
+        d_layout.setSpacing(14)
+
         meta_card = QFrame()
         meta_card.setStyleSheet("QFrame { background-color: #0f172a; border-radius: 8px; border: 1px solid #334155; }")
         meta_layout = QVBoxLayout(meta_card)
@@ -313,24 +506,18 @@ class StudyMaterialsPage(QWidget):
         method_lbl = QLabel(f"<b>{method_badge}</b>")
         method_lbl.setStyleSheet(f"color: {method_color}; font-size: 13px; background-color: #1e293b; padding: 3px 8px; border-radius: 4px;")
 
-        pages_lbl = QLabel(f"Pages: <b>{result.page_count}</b> (Meaningful: {result.meaningful_pages} / {int(result.meaningful_ratio*100)}%)")
+        pages_lbl = QLabel(f"Pages: <b>{result.page_count}</b>")
         pages_lbl.setStyleSheet("color: #cbd5e0; font-size: 13px; background-color: transparent;")
-
-        chars_lbl = QLabel(f"Characters: <b>{result.char_count:,}</b>")
-        chars_lbl.setStyleSheet("color: #cbd5e0; font-size: 13px; background-color: transparent;")
 
         stats_layout.addWidget(method_lbl)
         stats_layout.addSpacing(15)
         stats_layout.addWidget(pages_lbl)
-        stats_layout.addSpacing(15)
-        stats_layout.addWidget(chars_lbl)
         stats_layout.addStretch()
 
         meta_layout.addWidget(file_label)
         meta_layout.addLayout(stats_layout)
         d_layout.addWidget(meta_card)
 
-        # ── Status / Warning Banners ───────────────────────────────────────────
         if not result.success and result.error_message:
             err_card = QFrame()
             err_card.setStyleSheet("QFrame { background-color: #450a0a; border-radius: 6px; border: 1px solid #7f1d1d; }")
@@ -342,81 +529,77 @@ class StudyMaterialsPage(QWidget):
             err_layout.addWidget(err_lbl)
             d_layout.addWidget(err_card)
 
-        # ── Main Topics Card ───────────────────────────────────────────────────
-        # Always show the topics section (even if empty / errored) so the user
-        # can see that the AI step ran.
         topics_card = QFrame()
-        topics_card.setStyleSheet(
-            "QFrame { background-color: #0f172a; border-radius: 8px; border: 1px solid #334155; }"
-        )
-        topics_layout = QVBoxLayout(topics_card)
-        topics_layout.setContentsMargins(15, 12, 15, 14)
-        topics_layout.setSpacing(6)
+        topics_card.setStyleSheet("QFrame { background-color: #0f172a; border-radius: 8px; border: 1px solid #334155; }")
+        topics_card_layout = QVBoxLayout(topics_card)
+        topics_card_layout.setContentsMargins(15, 14, 15, 14)
+        topics_card_layout.setSpacing(10)
 
-        topics_header = QLabel("🧠 Main Topics Identified")
-        topics_header.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        topics_header = QLabel(f"🧠 Main Topics & Summaries ({result.topic_count} topics)")
+        topics_header.setFont(QFont("Segoe UI", 13, QFont.Bold))
         topics_header.setStyleSheet("color: #a78bfa; background-color: transparent;")
-        topics_layout.addWidget(topics_header)
+        topics_card_layout.addWidget(topics_header)
 
-        if topic_result is None:
-            # Extraction failed before topics could be identified
-            skip_lbl = QLabel("Topic identification was skipped (extraction unsuccessful).")
-            skip_lbl.setStyleSheet("color: #94a3b8; font-size: 12px; font-style: italic; background-color: transparent;")
-            topics_layout.addWidget(skip_lbl)
-
-        elif not topic_result.success:
-            # Gemini call failed
-            ai_err_lbl = QLabel(f"⚠️ {topic_result.error_message}")
-            ai_err_lbl.setStyleSheet("color: #fbbf24; font-size: 12px; background-color: transparent;")
-            ai_err_lbl.setWordWrap(True)
-            topics_layout.addWidget(ai_err_lbl)
-
-        elif not topic_result.topics:
-            # Success but Gemini found nothing
-            none_lbl = QLabel("No distinct academic topics were identified in this document.")
-            none_lbl.setStyleSheet("color: #94a3b8; font-size: 12px; font-style: italic; background-color: transparent;")
-            topics_layout.addWidget(none_lbl)
-
+        if not result.topics:
+            no_topics_lbl = QLabel("No topics identified or AI summary generation was unavailable.")
+            no_topics_lbl.setStyleSheet("color: #94a3b8; font-size: 12px; font-style: italic; background-color: transparent;")
+            topics_card_layout.addWidget(no_topics_lbl)
         else:
-            # ✅ Display numbered topic list
-            count_lbl = QLabel(f"{topic_result.topic_count} topic(s) found")
-            count_lbl.setStyleSheet("color: #64748b; font-size: 11px; background-color: transparent;")
-            topics_layout.addWidget(count_lbl)
+            topics_scroll = QScrollArea()
+            topics_scroll.setWidgetResizable(True)
+            topics_scroll.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
 
-            for index, topic in enumerate(topic_result.topics, start=1):
-                topic_lbl = QLabel(f"  {index}.  {topic}")
-                topic_lbl.setStyleSheet(
-                    "color: #e2e8f0; font-size: 13px; background-color: #1e293b; "
-                    "padding: 5px 10px; border-radius: 4px; border-left: 3px solid #a78bfa;"
+            topics_container = QWidget()
+            topics_vbox = QVBoxLayout(topics_container)
+            topics_vbox.setContentsMargins(0, 0, 0, 0)
+            topics_vbox.setSpacing(12)
+
+            for topic_item in result.topics:
+                t_frame = QFrame()
+                t_frame.setStyleSheet(
+                    "QFrame { background-color: #1e293b; border-radius: 6px; "
+                    "border-left: 4px solid #a78bfa; border-top: 1px solid #334155; "
+                    "border-right: 1px solid #334155; border-bottom: 1px solid #334155; }"
                 )
-                topic_lbl.setWordWrap(True)
-                topics_layout.addWidget(topic_lbl)
+                t_layout = QVBoxLayout(t_frame)
+                t_layout.setContentsMargins(12, 10, 12, 10)
+                t_layout.setSpacing(6)
+
+                t_title = QLabel(f"<b>{topic_item.order_index}. {topic_item.title}</b>")
+                t_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
+                t_title.setStyleSheet("color: #38bdf8; background-color: transparent;")
+                t_layout.addWidget(t_title)
+
+                if topic_item.summary:
+                    summary_hdr = QLabel("Summary:")
+                    summary_hdr.setFont(QFont("Segoe UI", 10, QFont.Bold))
+                    summary_hdr.setStyleSheet("color: #cbd5e0; background-color: transparent;")
+                    t_layout.addWidget(summary_hdr)
+
+                    summary_txt = QLabel(topic_item.summary)
+                    summary_txt.setWordWrap(True)
+                    summary_txt.setStyleSheet("color: #f8fafc; font-size: 12px; background-color: transparent; line-height: 1.4;")
+                    t_layout.addWidget(summary_txt)
+
+                if topic_item.key_points:
+                    kp_hdr = QLabel("Main Points:")
+                    kp_hdr.setFont(QFont("Segoe UI", 10, QFont.Bold))
+                    kp_hdr.setStyleSheet("color: #cbd5e0; background-color: transparent; padding-top: 4px;")
+                    t_layout.addWidget(kp_hdr)
+
+                    for kp in topic_item.key_points:
+                        kp_lbl = QLabel(f"  • {kp}")
+                        kp_lbl.setWordWrap(True)
+                        kp_lbl.setStyleSheet("color: #e2e8f0; font-size: 12px; background-color: transparent;")
+                        t_layout.addWidget(kp_lbl)
+
+                topics_vbox.addWidget(t_frame)
+
+            topics_scroll.setWidget(topics_container)
+            topics_card_layout.addWidget(topics_scroll)
 
         d_layout.addWidget(topics_card)
 
-        # ── Extracted Text Preview ─────────────────────────────────────────────
-        preview_header = QLabel("Extracted Text Preview")
-        preview_header.setFont(QFont("Segoe UI", 12, QFont.Bold))
-        preview_header.setStyleSheet("color: #ffffff;")
-        d_layout.addWidget(preview_header)
-
-        text_area = QTextEdit()
-        text_area.setReadOnly(True)
-        text_area.setPlainText(result.preview_text if result.preview_text else "No text extracted.")
-        text_area.setStyleSheet("""
-            QTextEdit {
-                background-color: #0f172a;
-                color: #f8fafc;
-                font-family: "Consolas", "Segoe UI", monospace;
-                font-size: 13px;
-                border: 1px solid #334155;
-                border-radius: 6px;
-                padding: 10px;
-            }
-        """)
-        d_layout.addWidget(text_area, 1)
-
-        # ── Close Button ───────────────────────────────────────────────────────
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         close_btn = QPushButton("Close")
@@ -430,6 +613,7 @@ class StudyMaterialsPage(QWidget):
         d_layout.addLayout(btn_layout)
 
         dialog.exec()
+
 
     def open_material(self, material):
         file_path = material.get("file_path")

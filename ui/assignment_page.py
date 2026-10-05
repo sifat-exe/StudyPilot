@@ -63,16 +63,51 @@ class AssignmentPage(QWidget):
             self.table.setItem(row, 0, QTableWidgetItem(course_code))
             self.table.setItem(row, 1, QTableWidgetItem(topic_title))
             self.table.setItem(row, 2, QTableWidgetItem(str(a.get("deadline", ""))))
-            
-            status_text = "Completed" if a.get("completed") else "Pending"
-            self.table.setItem(row, 3, QTableWidgetItem(status_text))
+
+            # Status dropdown (Pending / Finished)
+            status_combo = QComboBox()
+            status_combo.addItems(["Pending", "Finished"])
+            status_combo.setCursor(QCursor(Qt.PointingHandCursor))
+            status_combo.setStyleSheet("""
+                QComboBox {
+                    background-color: #f1f5f9;
+                    color: #1e293b;
+                    border: 1px solid #cbd5e0;
+                    border-radius: 6px;
+                    padding: 4px 8px;
+                    font-weight: bold;
+                    font-size: 12px;
+                }
+                QComboBox QAbstractItemView {
+                    background-color: #ffffff;
+                    color: #1e293b;
+                    selection-background-color: #2563eb;
+                    selection-color: #ffffff;
+                }
+            """)
+            if a.get("completed"):
+                status_combo.setCurrentIndex(1)  # Finished
+            else:
+                status_combo.setCurrentIndex(0)  # Pending
+
+            item_id = a.get("assignment_id", row)
+            status_combo.currentTextChanged.connect(
+                lambda text, aid=item_id: self.on_status_changed(aid, text)
+            )
+            self.table.setCellWidget(row, 3, status_combo)
+
 
             del_btn = QPushButton("Delete")
             del_btn.setCursor(QCursor(Qt.PointingHandCursor))
             del_btn.setStyleSheet("background-color: #ef4444; color: white; border-radius: 6px; padding: 6px 12px; font-weight: bold; font-size: 12px;")
-            item_id = a.get("assignment_id", row)
             del_btn.clicked.connect(lambda _, target_id=item_id: self.delete_assignment(target_id))
             self.table.setCellWidget(row, 4, del_btn)
+
+    def on_status_changed(self, assignment_id, text):
+        """Persist the status change to the database."""
+        completed = (text == "Finished")
+        self.service.update_assignment_status(assignment_id, completed)
+
 
     def delete_assignment(self, item_id):
         self.service.delete_assignment(item_id)
@@ -130,3 +165,5 @@ class AssignmentPage(QWidget):
         save_btn.clicked.connect(save)
         d_layout.addRow(save_btn)
         dialog.exec()
+
+

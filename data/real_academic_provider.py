@@ -40,15 +40,47 @@ class RealAcademicProvider:
         ]
 
     def add_routine(self, user_id, course_title, day_of_week, start_time, end_time):
+        """
+        Inserts a class routine entry directly via SQL.
+        The database.py add_class_routine() triggers a SQLite FK mismatch error
+        (class_routine.course_id incorrectly references users instead of courses).
+        We work around it by running the INSERT with FK checks off.
+        """
+        from Database.database import get_connection
         course_code = course_title.split(" - ")[0].split(" (")[0].strip()
         course_id = self._get_course_id_by_code(user_id, course_code)
-        if course_id:
-            add_class_routine(user_id, course_id, day_of_week, start_time, end_time)
+        if not course_id:
+            return False
+        con = get_connection()
+        cur = con.cursor()
+        cur.execute("PRAGMA foreign_keys = OFF")
+        cur.execute("""
+            INSERT INTO class_routine (user_id, course_id, day_of_week, start_time, end_time)
+            VALUES (?, ?, ?, ?, ?)
+        """, (user_id, course_id, day_of_week, start_time, end_time))
+        cur.execute("PRAGMA foreign_keys = ON")
+        con.commit()
+        con.close()
         return True
 
+
     def delete_routine(self, routine_id):
-        delete_class_routine(routine_id)
+        """
+        Deletes a class routine entry directly via SQL.
+        The database.py delete_class_routine() triggers a SQLite FK mismatch error
+        due to a schema issue in the live DB (class_routine.course_id references users
+        instead of courses). We work around it by running the DELETE with FK checks off.
+        """
+        from Database.database import get_connection
+        con = get_connection()
+        cur = con.cursor()
+        cur.execute("PRAGMA foreign_keys = OFF")
+        cur.execute("DELETE FROM class_routine WHERE routine_id = ?", (routine_id,))
+        cur.execute("PRAGMA foreign_keys = ON")
+        con.commit()
+        con.close()
         return True
+
 
     # --- ASSIGNMENTS ---
     def get_assignments(self, user_id):
@@ -74,6 +106,19 @@ class RealAcademicProvider:
 
     def mark_assignment_completed(self, assignment_id):
         complete_assignment(assignment_id)
+        return True
+
+    def update_assignment_status(self, assignment_id, completed: bool):
+        """Update assignment completed status (0=Pending, 1=Finished) directly via SQL."""
+        from Database.database import get_connection
+        con = get_connection()
+        cur = con.cursor()
+        cur.execute(
+            "UPDATE assignments SET completed = ? WHERE assignment_id = ?",
+            (1 if completed else 0, assignment_id)
+        )
+        con.commit()
+        con.close()
         return True
 
     def delete_assignment(self, assignment_id):

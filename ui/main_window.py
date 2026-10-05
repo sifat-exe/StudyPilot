@@ -6,6 +6,7 @@ from ui.assignment_page import AssignmentPage
 from ui.class_test_page import ClassTestPage
 from ui.profile_page import ProfilePage
 from ui.study_materials_page import StudyMaterialsPage
+from ui.study_planner_page import StudyPlannerPage
 
 class MainWindow(QMainWindow):
     def __init__(self, user_info=None):
@@ -37,10 +38,13 @@ class MainWindow(QMainWindow):
         # Pages
         self.dashboard = Dashboard(self.user_info)
         self.dashboard.logout_action.triggered.connect(self.handle_logout)
+        self.dashboard.navigate_to_planner.connect(self.open_planner_tab)
+
         self.routine_page = RoutinePage(self.user_info)
         self.study_materials_page = StudyMaterialsPage(self.user_info)
         self.assignment_page = AssignmentPage(self.user_info)
         self.class_test_page = ClassTestPage(self.user_info)
+        self.study_planner_page = StudyPlannerPage(self.user_info)
         self.profile_page = ProfilePage(self.user_info)
         self.profile_page.profile_saved.connect(self.handle_profile_saved)
         
@@ -49,6 +53,7 @@ class MainWindow(QMainWindow):
         self.content_area.addWidget(self.study_materials_page)
         self.content_area.addWidget(self.assignment_page)
         self.content_area.addWidget(self.class_test_page)
+        self.content_area.addWidget(self.study_planner_page)
         self.content_area.addWidget(self.profile_page)
 
         # Connect sidebar buttons
@@ -67,6 +72,7 @@ class MainWindow(QMainWindow):
             btn.setChecked(btn == sender)
         
         if text == "Dashboard":
+            self.dashboard.load_data()
             self.content_area.setCurrentWidget(self.dashboard)
         elif text == "Class Routine":
             self.routine_page.load_data()
@@ -80,11 +86,28 @@ class MainWindow(QMainWindow):
         elif text == "Class Tests":
             self.class_test_page.load_data()
             self.content_area.setCurrentWidget(self.class_test_page)
+        elif text == "Study Planner":
+            self.study_planner_page.load_data()
+            self.content_area.setCurrentWidget(self.study_planner_page)
         elif text == "Profile":
             self.profile_page.load_data()
             self.content_area.setCurrentWidget(self.profile_page)
 
+
+    def open_planner_tab(self):
+        """Navigates directly to the Study Planner tab from Dashboard."""
+        for btn in self.sidebar.buttons:
+            index = self.sidebar.buttons.index(btn)
+            text = self.sidebar.nav_items[index][0]
+            if text == "Study Planner":
+                btn.setChecked(True)
+                self.study_planner_page.load_data()
+                self.content_area.setCurrentWidget(self.study_planner_page)
+            else:
+                btn.setChecked(False)
+
     def handle_profile_saved(self, profile):
+
         if profile.get("name"):
             self.user_info["name"] = profile["name"]
             self.sidebar.update_user_display(self.user_info)
