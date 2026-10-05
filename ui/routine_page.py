@@ -1,9 +1,10 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QDialog, QFormLayout,
-    QLineEdit, QComboBox, QMessageBox, QScrollArea, QFrame
+    QLineEdit, QComboBox, QMessageBox, QScrollArea, QFrame,
+    QTimeEdit
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTime
 from PySide6.QtGui import QFont, QCursor
 from services.academic_service import AcademicService
 from services.profile_service import ProfileService
@@ -168,17 +169,47 @@ class RoutinePage(QWidget):
         type_combo = QComboBox()
         type_combo.addItems(["Class", "Lab"])
 
-        # 3. Dynamic Time slot dropdown
+       # 3. Time slot dropdown + custom time
         slot_combo = QComboBox()
         slot_combo.addItems(CLASS_SLOTS)
 
+        custom_time_btn = QPushButton("Custom Time")
+        custom_time_btn.setCheckable(True)
+
+        start_time = QTimeEdit()
+        start_time.setDisplayFormat("h:mm AP")
+        start_time.setTime(QTime(8, 0))
+        start_time.setVisible(False)
+
+        end_time = QTimeEdit()
+        end_time.setDisplayFormat("h:mm AP")
+        end_time.setTime(QTime(8, 50))
+        end_time.setVisible(False)
+
+
+        def toggle_custom_time(checked):
+            slot_combo.setVisible(not checked)
+            start_time.setVisible(checked)
+            end_time.setVisible(checked)
+
+            if checked:
+                custom_time_btn.setText("Use Time Slot")
+            else:
+                custom_time_btn.setText("Custom Time")
+
+
         def update_slots(index):
             slot_combo.clear()
+
             if type_combo.currentText() == "Class":
                 slot_combo.addItems(CLASS_SLOTS)
             else:
                 slot_combo.addItems(LAB_SLOTS)
 
+            custom_time_btn.setChecked(False)
+
+
+        custom_time_btn.toggled.connect(toggle_custom_time)
         type_combo.currentIndexChanged.connect(update_slots)
 
         # 4. Course No dropdown (from Profile / database)
@@ -200,6 +231,9 @@ class RoutinePage(QWidget):
         d_layout.addRow("Select Day:", day_combo)
         d_layout.addRow("Class / Lab:", type_combo)
         d_layout.addRow("Select Time:", slot_combo)
+        d_layout.addRow("", custom_time_btn)
+        d_layout.addRow("Start Time:", start_time)
+        d_layout.addRow("End Time:", end_time)
         d_layout.addRow("Course No:", course_combo)
         d_layout.addRow("Teacher's Name:", teacher_in)
         d_layout.addRow("Room No:", room_in)
@@ -215,8 +249,23 @@ class RoutinePage(QWidget):
             session_type = type_combo.currentText()
             course_title = f"{selected_course} ({session_type})"
             day = day_combo.currentText()
-            time_slot = slot_combo.currentText()
             
+            if custom_time_btn.isChecked():
+                if start_time.time() >= end_time.time():
+                    QMessageBox.warning(
+                        dialog,
+                        "Invalid Time",
+                        "End time must be after start time."
+                    )
+                    return
+
+                time_slot = (
+                    f"{start_time.time().toString('h.mm AP')} - "
+                    f"{end_time.time().toString('h.mm AP')}"
+                )
+            else:
+                time_slot = slot_combo.currentText()
+                        
             teacher = teacher_in.text().strip()
             room = room_in.text().strip()
             extra_details = f"Teacher: {teacher}" + (f" | Room: {room}" if room else "") + f" | Slot: {time_slot}"

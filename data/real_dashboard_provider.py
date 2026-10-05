@@ -8,8 +8,8 @@ class RealDashboardProvider:
 
     def get_dashboard_summary(self, user_id):
         routines = get_class_routines(user_id) if user_id else []
-        assignments = get_upcoming_assignments()
-        exams = get_upcoming_exams()
+        assignments = get_upcoming_assignments(user_id)
+        exams = get_upcoming_exams(user_id)
         user_courses = get_courses()
 
         study_plans = []
