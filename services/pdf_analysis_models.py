@@ -3,12 +3,6 @@ pdf_analysis_models.py
 ──────────────────────
 Structured, database-ready data models for the StudyPilot PDF Analysis pipeline.
 
-These dataclasses represent PURE DATA and must not contain any UI elements,
-PySide6 widgets, or UI-specific logic.
-
-Future Database Mapping:
-  - PDFAnalysisResult -> PDFDocument table
-  - TopicSummary      -> Topic & TopicSummary tables
 """
 
 from dataclasses import dataclass, field

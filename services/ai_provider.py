@@ -1,19 +1,3 @@
-"""
-ai_provider.py
-──────────────
-Thin Gemini API wrapper for the StudyPilot service layer.
-
-Responsibilities:
-  - Build the AI prompt for topic identification.
-  - Send text to the Gemini API and receive the response.
-  - Parse the JSON response into a plain Python list.
-  - Chunk long texts so no single request exceeds the practical limit.
-  - Deduplicate near-identical topics across chunks.
-
-The UI layer must NEVER import this file directly.
-All AI calls go through topic_identification_service.py.
-"""
-
 import re
 import json
 import time

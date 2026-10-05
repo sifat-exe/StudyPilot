@@ -3,11 +3,6 @@ import copy
 
 
 class DummyProfileProvider:
-    """In-memory student profile for USE_DUMMY_DATA=True.
-
-    This does not write to study_pilot.db. Set USE_DUMMY_DATA=False
-    to save profile and courses in the database.
-    """
 
     _profiles = {}
 

@@ -4,12 +4,8 @@ priority_calculator.py
 Deterministic rule-based priority system for StudyPilot Study Planner.
 
 Formula:
-  Priority = Deadline Score + Workload Score + Difficulty Score
+  Priority = Deadline Score + Workload Score
 
-Note:
-  Credit score is excluded as requested.
-  Workload Score and Difficulty Score are modular helper functions that safely return 0 for now.
-  When difficulty or topic completion is added in the future, only these helper functions need to be updated.
 """
 
 
@@ -45,17 +41,6 @@ def calculate_workload_score(course: dict) -> int:
     return 0
 
 
-def calculate_difficulty_score(course: dict) -> int:
-    """
-    Modular difficulty score helper.
-    Currently returns 0. Ready to incorporate future course difficulty column from DB.
-    """
-    # Future integration:
-    # diff_map = {"Easy": 5, "Medium": 15, "Hard": 25}
-    # return diff_map.get(course.get("difficulty"), 0)
-    return 0
-
-
 def calculate_priority(task: dict, course: dict) -> int:
     """
     Calculates overall task priority.
@@ -75,7 +60,6 @@ def calculate_priority(task: dict, course: dict) -> int:
     days_remaining = task.get("days_remaining") if task else None
     deadline_score = calculate_deadline_score(days_remaining)
     workload_score = calculate_workload_score(course)
-    difficulty_score = calculate_difficulty_score(course)
 
-    total_priority = deadline_score + workload_score + difficulty_score
+    total_priority = deadline_score + workload_score
     return max(0, total_priority)

@@ -1,16 +1,3 @@
-# data/real_profile_provider.py
-#
-# Uses get_connection() from database.py so profile/courses are stored in
-# study_pilot.db. database.py itself is not modified.
-#
-# Sifat: please move these into Database/database.py later:
-#   ensure_student_profile_columns()
-#   get_student_profile(user_id)
-#   save_student_profile(user_id, name, university, roll, year, semester)
-#   get_courses_by_user(user_id)
-#   update_course(course_id, course_code, course_title)
-# Existing functions already used: add_course, delete_course, get_connection
-
 from Database.database import get_connection, add_course, delete_course
 
 PROFILE_COLUMNS = ("university", "roll", "year", "semester")

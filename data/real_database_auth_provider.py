@@ -7,14 +7,7 @@ class RealDatabaseAuthProvider:
         return authenticate_user(email_or_username, password)
 
     def register(self, name, email, password):
-        """
-        Registers a new user using Sifat's database functions.
 
-        Sifat needs to provide:
-        1. A function to check if email exists: email_exists(email) -> bool
-        2. The existing register_user(name, email, password) function
-           (already exists in Database/database.py)
-        """
         from Database.database import register_user
 
         # TODO: Sifat needs to add an email_exists() function to database.py
