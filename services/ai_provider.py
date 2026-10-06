@@ -171,7 +171,6 @@ class GeminiProvider:
         topics_formatted = "\n".join([f"- {t}" for t in topics])
 
         prompt = f"""You are a university professor and academic summarizer.
-
 Analyze the provided PDF text and generate a clear, informative academic summary and main points for EACH of the following identified topics.
 
 IDENTIFIED TOPICS:

@@ -231,30 +231,48 @@ class Dashboard(QWidget):
             for session in data['schedule']:
                 item = QFrame()
                 item.setStyleSheet("background-color: white; border: 1px solid #e2e8f0; border-radius: 8px;")
-                item_layout = QHBoxLayout(item)
-                item_layout.setContentsMargins(15, 15, 15, 15)
+                item_layout = QVBoxLayout(item)
+                item_layout.setContentsMargins(15, 12, 15, 12)
+                item_layout.setSpacing(4)
 
-                dot = QLabel("🔵")
-                time_lbl = QLabel(session['time'])
-                time_lbl.setFixedWidth(120)
-                time_lbl.setStyleSheet("color: #4a5568; font-weight: bold;")
+                # Parse session type and course from topic string
+                # topic format: "CT Preparation: CSE2101 (DM)" or "Assignment Work: ..."
+                topic_str = session.get('topic', '')
+                course_str = session.get('course', '')
 
-                course_topic = QVBoxLayout()
-                c_lbl = QLabel(session['course'])
-                c_lbl.setFont(QFont("Segoe UI", 12, QFont.Bold))
-                top_lbl = QLabel(session['topic'])
-                top_lbl.setStyleSheet("color: #718096;")
-                course_topic.addWidget(c_lbl)
-                course_topic.addWidget(top_lbl)
+                if ':' in topic_str:
+                    session_type_raw = topic_str.split(':')[0].strip()
+                else:
+                    session_type_raw = "Study Session"
 
-                status_lbl = QLabel(session['status'])
-                status_lbl.setStyleSheet("background-color: #feebc8; color: #dd6b20; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;")
+                # Determine color based on session type
+                if "CT" in session_type_raw or "Class Test" in session_type_raw:
+                    type_color = "#dd6b20"
+                elif "Assignment" in session_type_raw:
+                    type_color = "#2563eb"
+                else:
+                    type_color = "#7c3aed"  # purple for Revision
 
-                item_layout.addWidget(dot)
+                # Sub-header: "CT PREPARATION • CSE2101"
+                sub_text = f"{session_type_raw} • {course_str}".upper()
+                sub_hdr = QLabel(sub_text)
+                sub_hdr.setFont(QFont("Segoe UI", 9, QFont.Bold))
+                sub_hdr.setStyleSheet(f"color: {type_color}; letter-spacing: 0.5px;")
+
+                # Course label (bold)
+                course_lbl = QLabel(course_str)
+                course_lbl.setFont(QFont("Segoe UI", 11, QFont.Bold))
+                course_lbl.setStyleSheet("color: #1e293b;")
+                course_lbl.setWordWrap(True)
+
+                # Time label
+                time_lbl = QLabel(f"📅 {session.get('time', '')}")
+                time_lbl.setFont(QFont("Segoe UI", 10))
+                time_lbl.setStyleSheet("color: #64748b;")
+
+                item_layout.addWidget(sub_hdr)
+                item_layout.addWidget(course_lbl)
                 item_layout.addWidget(time_lbl)
-                item_layout.addLayout(course_topic)
-                item_layout.addStretch()
-                item_layout.addWidget(status_lbl)
 
                 sched_layout.addWidget(item)
 
