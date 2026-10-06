@@ -15,3 +15,48 @@ StudyPilot/
 ├── documents/
 │
 └── generated/
+
+
+
+USERS
+  │
+  ├───────────────┐
+  │               │
+  ▼               ▼
+STUDY_SESSIONS   STUDY_PLANS
+  │               │
+  │               │
+  ├─ session_id   ├─ plan_id
+  |               ├─ course_id
+  ├─ course_id    ├─ date
+  ├─ topic_id     ├─ duration_minutes
+  ├─ start_time   ├─ task                  
+  ├─ duration     └─completed
+  └─ completed
+
+
+USERS
+  │
+  ├───────────────┐
+  ▼               ▼
+DOCUMENTS      NOTIFICATIONS
+  │                │
+  ├─ document_id   ├─ notification_id
+  ├─ user_id       ├─ user_id
+  ├─ course_id     ├─ title
+  ├─ filename      ├─ message
+  ├─ file_path     ├─ scheduled_time
+  └─ extracted_text└─ is_read
+
+
+USERS
+ │
+ ├── COURSES
+ │    ├── ASSIGNMENTS
+ │    ├── EXAMS
+ │    ├── TOPICS
+ │    └── DOCUMENTS
+ │
+ ├── STUDY_SESSIONS
+ ├── STUDY_PLANS
+ └── NOTIFICATIONS
