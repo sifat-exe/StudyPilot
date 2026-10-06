@@ -1,15 +1,16 @@
 from datetime import datetime, timedelta
 from Database.database import (
-    get_connection, get_class_routines, get_upcoming_assignments,
-    get_upcoming_exams, get_courses
+    get_connection, get_class_routines,
+    get_assignments_with_courses, get_exams_with_courses, get_courses
 )
 
 class RealDashboardProvider:
 
     def get_dashboard_summary(self, user_id):
         routines = get_class_routines(user_id) if user_id else []
-        assignments = get_upcoming_assignments()
-        exams = get_upcoming_exams()
+        # Fetch only this user's assignments and exams
+        assignments = get_assignments_with_courses(user_id) if user_id else []
+        exams = get_exams_with_courses(user_id) if user_id else []
         user_courses = get_courses()
 
         study_plans = []
@@ -115,18 +116,19 @@ class RealDashboardProvider:
             "deadlines": [
                 {
                     "type": "Assignment",
-                    "course": a[1],
-                    "topic": a[2],
-                    "date": a[3],
+                    "course": a[0],   # course_code
+                    "topic": a[1],    # title
+                    "date": a[2],     # deadline
                     "color": "#e53e3e"
                 }
                 for a in assignments
+                if not a[3]           # exclude completed assignments
             ] + [
                 {
                     "type": "Class Test",
-                    "course": e[1],
-                    "topic": e[2],
-                    "date": e[3],
+                    "course": e[0],   # course_code
+                    "topic": e[1],    # exam_title
+                    "date": e[2],     # exam_date
                     "color": "#dd6b20"
                 }
                 for e in exams

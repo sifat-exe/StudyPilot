@@ -26,8 +26,4 @@ def _load_env_file():
 
 _load_env_file()
 
-# ── Gemini AI API Key ──────────────────────────────────────────────────────────
-# Falls back to the hardcoded key when running as a bundled .exe (no .env available).
-_FALLBACK_KEY = "AQ.Ab8RN6JGoi1kq_a9MiGb0ZknQkFCPyHCBwgNe02fXCTKu2IMGw"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip() or _FALLBACK_KEY
-
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()

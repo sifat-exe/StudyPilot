@@ -27,6 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / get_database_path()
 
 
+
 def get_connection():
     con = sqlite3.connect(DB_PATH, timeout=10.0)
     con.execute("PRAGMA foreign_keys = ON")
@@ -1075,7 +1076,7 @@ def get_completed_study_plan_count():
 # UPCOMING ITEMS
 # ============================================================
 
-def get_upcoming_assignments():
+def get_upcoming_assignments(user_id=None):
     con = get_connection()
     cur = con.cursor()
 
@@ -1090,16 +1091,16 @@ def get_upcoming_assignments():
         JOIN courses AS c
             ON a.course_id = c.course_id
         WHERE a.completed = 0
+          AND (? IS NULL OR c.user_id = ?)
         ORDER BY a.deadline
-    """)
+    """, (user_id, user_id))
 
     assignments = cur.fetchall()
     con.close()
 
     return assignments
 
-
-def get_upcoming_exams():
+def get_upcoming_exams(user_id=None):
     con = get_connection()
     cur = con.cursor()
 
@@ -1112,14 +1113,14 @@ def get_upcoming_exams():
         FROM exams AS e
         JOIN courses AS c
             ON e.course_id = c.course_id
+        WHERE (? IS NULL OR c.user_id = ?)
         ORDER BY e.exam_date
-    """)
+    """, (user_id, user_id))
 
     exams = cur.fetchall()
     con.close()
 
     return exams
-
 
 # ============================================================
 # DASHBOARD SUMMARY
