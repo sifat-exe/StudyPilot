@@ -10,8 +10,21 @@ from datetime import date, timedelta, datetime
 # DATABASE CONFIGURATION
 # ============================================================
 
+def get_database_path():
+    app_data = os.getenv("LOCALAPPDATA")
+
+    if not app_data:
+        app_data = os.path.expanduser("~")
+
+    study_pilot_dir = os.path.join(app_data, "StudyPilot")
+
+    os.makedirs(study_pilot_dir, exist_ok=True)
+
+    return os.path.join(study_pilot_dir, "study_pilot.db")
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "study_pilot.db"
+DB_PATH = BASE_DIR / get_database_path()
 
 
 def get_connection():

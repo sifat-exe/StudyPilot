@@ -39,10 +39,16 @@ class RealDashboardProvider:
                 FROM study_plans AS s
                 JOIN courses AS c ON s.course_id = c.course_id
                 WHERE c.user_id = ? AND s.completed = 0
-                ORDER BY s.study_date ASC
-                LIMIT 4
             """, (user_id,))
-            pending_plans = cur.fetchall()
+            raw_plans = cur.fetchall()
+            # Sort in Python by parsed start datetime to avoid 12-hour AM/PM string-sort issues
+            def _plan_sort_key(row):
+                try:
+                    start = str(row[2]).split(" - ")[0].strip()
+                    return datetime.strptime(start, "%Y-%m-%d %I:%M %p")
+                except Exception:
+                    return datetime(9999, 12, 31)
+            pending_plans = sorted(raw_plans, key=_plan_sort_key)[:4]
             con.close()
 
         now = datetime.now()
