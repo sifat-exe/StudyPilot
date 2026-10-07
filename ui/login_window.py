@@ -162,26 +162,8 @@ class LoginWindow(QWidget):
         pass_container = QWidget()
         pass_container.setLayout(pass_layout)
         
-        # Options: Remember me & Forgot Password
         options_layout = QHBoxLayout()
-        remember_cb = QCheckBox("Remember me")
-        remember_cb.setFont(QFont("Segoe UI", 10))
-        remember_cb.setStyleSheet("""
-            QCheckBox { color: #000000; }
-            QCheckBox::indicator { width: 15px; height: 15px;}
-        """)
-        
-        forgot_btn = QPushButton("Forgot password?")
-        forgot_btn.setFlat(True)
-        forgot_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        forgot_btn.setFont(QFont("Segoe UI", 10))
-        forgot_btn.setStyleSheet("color: #3182ce; text-align: right; border: none;")
-        
-        options_layout.addWidget(remember_cb)
-        options_layout.addStretch()
-        options_layout.addWidget(forgot_btn)
-
-    # have to implement forget_btn button's work here like forgot_btn.clicked.connect(...)
+    
         
         # Login Button
         self.login_btn = QPushButton("Login")
