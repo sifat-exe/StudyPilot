@@ -87,32 +87,50 @@ class PDFAnalysisService:
         try:
             ai = self._get_ai_provider()
 
-            # Stage 2: Topic Identification
             if status_callback:
-                status_callback("Stage 2/3: Identifying main topics with AI...")
+                status_callback("Stage 2/3: Sending a short PDF excerpt to AI...")
 
-            topic_titles = ai.identify_topics_from_text(extraction_res.extracted_text)
+            # One-shot analysis: small excerpt + model knowledge if needed.
+            raw_summaries = ai.analyze_document_from_text(extraction_res.extracted_text)
+
+            if not raw_summaries:
+                if status_callback:
+                    status_callback("Stage 3/3: Retrying topic identification...")
+                topic_titles = ai.identify_topics_from_text(extraction_res.extracted_text)
+                if topic_titles:
+                    raw_summaries = ai.generate_summaries_for_topics(
+                        extraction_res.extracted_text,
+                        topic_titles
+                    )
 
             topic_summaries = []
-            if topic_titles:
-                # Stage 3: Summary & Key Points Generation
-                if status_callback:
-                    status_callback(f"Stage 3/3: Generating summaries for {len(topic_titles)} topic(s)...")
-
-                raw_summaries = ai.generate_summaries_for_topics(
-                    extraction_res.extracted_text,
-                    topic_titles
+            for idx, item in enumerate(raw_summaries or [], start=1):
+                topic_summaries.append(
+                    TopicSummary(
+                        title=item.get("topic", f"Topic {idx}"),
+                        summary=item.get("summary", "Summary unavailable."),
+                        key_points=item.get("key_points", []),
+                        order_index=idx
+                    )
                 )
 
-                for idx, item in enumerate(raw_summaries, start=1):
-                    topic_summaries.append(
-                        TopicSummary(
-                            title=item.get("topic", f"Topic {idx}"),
-                            summary=item.get("summary", "Summary unavailable."),
-                            key_points=item.get("key_points", []),
-                            order_index=idx
-                        )
-                    )
+            if not topic_summaries:
+                return PDFAnalysisResult(
+                    file_path=extraction_res.file_path,
+                    file_name=extraction_res.file_name,
+                    page_count=extraction_res.page_count,
+                    extraction_method=extraction_res.extraction_method,
+                    extracted_text=extraction_res.extracted_text,
+                    meaningful_pages=extraction_res.meaningful_pages,
+                    meaningful_ratio=extraction_res.meaningful_ratio,
+                    is_scanned=extraction_res.is_scanned,
+                    topics=[],
+                    success=False,
+                    error_message="AI could not generate a summary from this PDF. Try a smaller or text-based PDF."
+                )
+
+            if status_callback:
+                status_callback(f"Stage 3/3: Prepared summaries for {len(topic_summaries)} topic(s).")
 
             return PDFAnalysisResult(
                 file_path=extraction_res.file_path,

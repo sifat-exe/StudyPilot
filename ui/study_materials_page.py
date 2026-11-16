@@ -219,7 +219,7 @@ class StudyMaterialsPage(QWidget):
                         )
                         action_btn.clicked.connect(lambda _, m=mat, a=existing_analysis: self.show_saved_summary_dialog(m, a))
                     else:
-                        action_btn = QPushButton("🔍 Extract Text")
+                        action_btn = QPushButton("🔍 Summarize")
                         action_btn.setCursor(QCursor(Qt.PointingHandCursor))
                         action_btn.setStyleSheet(
                             "background-color: #0f172a; color: #38bdf8; border: 1px solid #334155; "
@@ -294,7 +294,7 @@ class StudyMaterialsPage(QWidget):
             return
 
         progress_dialog = QProgressDialog("Initializing PDF Analysis...", None, 0, 100, self)
-        progress_dialog.setWindowTitle("PDF Analysis Pipeline")
+        progress_dialog.setWindowTitle("PDF Analysis")
         progress_dialog.setWindowModality(Qt.WindowModal)
         setup_dark_dialog(progress_dialog)
         progress_dialog.show()

@@ -310,7 +310,7 @@ class LoginWindow(QWidget):
         password = self.password_input.text()
         
         if not email_or_username or not password:
-            self.show_message_box(QMessageBox.Warning, "Login Error", "Please enter both email/username and password.")
+            self.show_message_box(QMessageBox.Warning, "Login Error", "Please enter both email and password.")
             return
             
         try:

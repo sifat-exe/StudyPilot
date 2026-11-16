@@ -39,7 +39,7 @@ class ScheduleGenerator:
     }
 
     # Default CT duration to block when no end-time is available
-    CT_DEFAULT_DURATION_MINS = 60
+    CT_DEFAULT_DURATION_MINS = 30
 
     def generate(
         self,

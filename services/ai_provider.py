@@ -3,33 +3,39 @@ import json
 import time
 from config import GEMINI_API_KEY
 
-# ── SDK Import ─────────────────────────────────────────────────────────────────
 try:
     from google import genai
+    from google.genai import types
     _SDK_AVAILABLE = True
 except ImportError:
+    genai = None
+    types = None
     _SDK_AVAILABLE = False
 
 
-# ── Configuration Constants ────────────────────────────────────────────────────
-MODEL_NAME = "gemini-3.8-flash"          # Primary fast 1M-context model
-CHUNK_SIZE = 12000                        # Max characters per API chunk
-MAX_TOPICS_PER_CHUNK = 15                # Guard against runaway responses
-SIMILARITY_THRESHOLD = 0.75              # Fuzzy-match ratio for deduplication
+# Working models for this API key. gemini-3.8-flash currently 504s/hangs.
+MODEL_CANDIDATES = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-flash-lite-latest",
+    "gemini-flash-latest",
+]
+
+MAX_SOURCE_CHARS = 6000
+MAX_TOPICS = 8
+HTTP_TIMEOUT_MS = 45000
+MAX_OUTPUT_TOKENS = 4096
 
 
 def is_valid_summary_text(text: str) -> bool:
-    """
-    Validates that a summary string is usable and not an exception, error, or 503/429 message.
-    """
+    """Reject empty text and obvious API/error messages, not academic content."""
     if not text or not text.strip():
         return False
     lower = text.lower().strip()
-    invalid_patterns = [
+    if len(lower) < 20:
+        return False
+    invalid_phrases = [
         "service_unavailable",
-        "503",
-        "429",
-        "quota",
         "resource_exhausted",
         "rate limit",
         "daily limit",
@@ -44,18 +50,15 @@ def is_valid_summary_text(text: str) -> bool:
         "could not parse ai summary",
         "no response received from ai",
         "temporarily unavailable",
-        "authentication"
+        "invalid api key",
+        "deadline_exceeded",
+        "deadline expired",
     ]
-    for pattern in invalid_patterns:
-        if pattern in lower:
-            return False
-    return True
+    return not any(phrase in lower for phrase in invalid_phrases)
 
 
 class GeminiProvider:
-    """
-    Handles all direct communication with the Gemini API.
-    """
+    """Handles communication with the Gemini API for PDF topic summaries."""
 
     def __init__(self):
         if not _SDK_AVAILABLE:
@@ -63,154 +66,181 @@ class GeminiProvider:
                 "google-genai package is not installed.\n"
                 "Run:  pip install -U google-genai"
             )
-        self._client = genai.Client(api_key=GEMINI_API_KEY)
-
-    # ── Public Methods ─────────────────────────────────────────────────────────
+        if not GEMINI_API_KEY:
+            raise RuntimeError(
+                "GEMINI_API_KEY is missing. Add it to StudyPilot/.env"
+            )
+        self._client = genai.Client(
+            api_key=GEMINI_API_KEY,
+            http_options=types.HttpOptions(timeout=HTTP_TIMEOUT_MS),
+        )
+        self._working_model = None
 
     def identify_topics_from_text(self, text: str) -> list:
+        if not text or not text.strip():
+            return []
+        result = self.analyze_document_from_text(text)
+        return [item["topic"] for item in result if item.get("topic")]
+
+    def generate_summaries_for_topics(self, text: str, topics: list) -> list:
+        if not text or not text.strip() or not topics:
+            return []
+        excerpt = self._prepare_excerpt(text)
+        prompt = self._build_summary_prompt(excerpt, topics[:MAX_TOPICS])
+        raw = self._generate_json_text(prompt)
+        parsed = self._parse_summaries_json(raw, topics[:MAX_TOPICS])
+        if parsed:
+            return parsed
+        return self.analyze_document_from_text(text)
+
+    def analyze_document_from_text(self, text: str) -> list:
         """
-        Given cleaned PDF text, returns a deduplicated list of main topic strings.
+        One-shot topic identification + summaries from a short PDF excerpt.
+        Uses model knowledge to fill gaps when the excerpt is incomplete.
         """
         if not text or not text.strip():
             return []
 
-        chunks = self._split_into_chunks(text, CHUNK_SIZE)
-        all_topics = []
+        excerpt = self._prepare_excerpt(text)
+        last_error = None
 
-        for chunk_index, chunk in enumerate(chunks, start=1):
+        for excerpt_size in (len(excerpt), min(2500, len(excerpt)), min(1200, len(excerpt))):
+            clipped = excerpt[:excerpt_size]
+            prompt = self._build_combined_prompt(clipped)
             try:
-                chunk_topics = self._call_gemini_for_topics(chunk, chunk_index, len(chunks))
-                all_topics.extend(chunk_topics)
+                raw = self._generate_json_text(prompt)
+                parsed = self._parse_summaries_json(raw, expected_topics=None)
+                if parsed:
+                    return parsed[:MAX_TOPICS]
             except Exception as e:
-                print(f"[GeminiProvider] Warning: chunk {chunk_index} failed — {e}")
+                last_error = e
+                print(f"[GeminiProvider] Combined analysis failed ({excerpt_size} chars): {e}")
                 continue
 
-        deduplicated = self._deduplicate_topics(all_topics)
-        return deduplicated
+        fallback = self._local_fallback_summaries(text)
+        if fallback:
+            return fallback
+        if last_error:
+            raise last_error
+        return []
 
-    def generate_summaries_for_topics(self, text: str, topics: list) -> list:
-        """
-        Generates topic-wise academic summaries and main/key points for a list of
-        already-identified topics using the extracted PDF text.
-        """
-        if not text or not text.strip() or not topics:
-            return []
+    def _prepare_excerpt(self, text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", (text or "")).strip()
+        if len(cleaned) <= MAX_SOURCE_CHARS:
+            return cleaned
+        head = cleaned[: int(MAX_SOURCE_CHARS * 0.75)]
+        tail = cleaned[-int(MAX_SOURCE_CHARS * 0.25):]
+        return head + "\n...\n" + tail
 
-        text_context = text[:30000]
+    def _build_combined_prompt(self, excerpt: str) -> str:
+        return f"""You are a university study assistant creating exam revision notes.
 
-        try:
-            return self._call_gemini_for_summaries(text_context, topics)
-        except Exception as e:
-            print(f"[GeminiProvider] Summary generation error: {e}")
-            raise e
+You receive only a SHORT excerpt from a PDF, not the full document.
+1. Identify 3 to {MAX_TOPICS} main academic topics from the excerpt.
+2. For each topic write a clear 1-2 paragraph academic summary and 3 to 6 revision key points.
+3. Prefer facts from the excerpt. If the excerpt is incomplete, finish the explanation using well-established academic knowledge for those topics. Do not refuse and do not say the text is insufficient.
+4. Return ONLY JSON in this shape:
+{{
+  "summaries": [
+    {{
+      "topic": "Topic Title",
+      "summary": "Academic paragraph(s)...",
+      "key_points": ["Point 1", "Point 2", "Point 3"]
+    }}
+  ]
+}}
 
-    # ── Private Helpers ────────────────────────────────────────────────────────
-
-    def _call_interactions_with_retry(self, prompt: str):
-        """
-        Executes client.interactions.create with targeted exponential backoff retries for 503 transient errors,
-        and immediate fail-fast handling for quota/rate limits or authentication errors.
-        """
-        max_attempts = 3
-        backoff_delays = [2, 4, 8]  # Attempt 1 -> wait 2s, Attempt 2 -> wait 4s, Attempt 3 -> wait 8s
-
-        for attempt in range(1, max_attempts + 1):
-            try:
-                response = self._client.interactions.create(
-                    model=MODEL_NAME,
-                    input=prompt,
-                    store=False,
-                )
-                if not response or not response.output_text or not response.output_text.strip():
-                    if attempt < max_attempts:
-                        time.sleep(backoff_delays[attempt - 1])
-                        continue
-                    raise RuntimeError("Received empty response from AI service.")
-                return response
-            except Exception as e:
-                err_str = str(e).lower()
-                print(f"[GeminiProvider] API Call attempt {attempt}/{max_attempts} error: {e}")
-
-                # 1. Quota / Rate Limit (429, RESOURCE_EXHAUSTED): Fail fast immediately
-                if any(term in err_str for term in ["quota", "resource_exhausted", "429", "rate limit", "requests per minute", "token limit"]):
-                    raise RuntimeError("AI service limit reached. Please try again later.") from e
-
-                # 2. Authentication / Permission / Invalid Key / Bad Request (401, 403, 400): Fail fast immediately
-                if any(term in err_str for term in ["401", "403", "400", "invalid api key", "permission_denied", "authentication"]):
-                    raise RuntimeError("AI configuration or authentication error. Please check your API key.") from e
-
-                # 3. 503 / High Demand / Service Unavailable: Retry with exponential backoff (2s, 4s, 8s)
-                if any(term in err_str for term in ["503", "unavailable", "service_unavailable", "high demand", "overload", "temporarily unavailable"]):
-                    if attempt < max_attempts:
-                        delay = backoff_delays[attempt - 1]
-                        print(f"[GeminiProvider] 503 Service Unavailable / High demand detected. Retrying in {delay}s (Attempt {attempt}/{max_attempts})...")
-                        time.sleep(delay)
-                        continue
-                    else:
-                        raise RuntimeError("Summary generation is temporarily unavailable. Please try again.") from e
-
-                # Other unexpected errors
-                if attempt < max_attempts:
-                    time.sleep(backoff_delays[attempt - 1])
-                    continue
-                raise RuntimeError(f"AI service error: {str(e)}") from e
-
-    def _call_gemini_for_summaries(self, text_context: str, topics: list) -> list:
-        """
-        Sends topics and PDF text context to Gemini to generate topic-wise summaries.
-        """
-        prompt = self._build_summary_prompt(text_context, topics)
-        response = self._call_interactions_with_retry(prompt)
-        raw_text = response.output_text or ""
-        return self._parse_summaries_json(raw_text, topics)
+PDF EXCERPT:
+{excerpt}"""
 
     def _build_summary_prompt(self, text_context: str, topics: list) -> str:
-        """
-        Constructs the academic topic summary + main points prompt.
-        """
         topics_formatted = "\n".join([f"- {t}" for t in topics])
+        return f"""You are a university professor and academic summarizer.
 
-        prompt = f"""You are a university professor and academic summarizer.
-Analyze the provided PDF text and generate a clear, informative academic summary and main points for EACH of the following identified topics.
+Write a revision summary for EACH identified topic.
+You only have a short PDF excerpt. Prefer the excerpt, but use standard academic knowledge to complete any gaps so every topic has a useful summary. Do not refuse.
 
 IDENTIFIED TOPICS:
 {topics_formatted}
 
-RULES:
-1. For EACH topic, provide:
-   - "summary": A clear, informative 1-2 paragraph university-level academic summary explaining the topic based ONLY on information supported by the PDF text. Include important definitions, concepts, principles, equations, or mechanisms present in the PDF text.
-   - "key_points": A list of approximately 3 to 7 concise, important main points/key facts for that topic mentioned in the PDF text. Each point must represent an important concept or fact and be easy to revise. Do NOT force exactly 5 points for every topic.
-2. Return ONLY a JSON object in this exact format:
+Return ONLY JSON:
 {{
   "summaries": [
     {{
       "topic": "Exact Topic Title",
       "summary": "Academic explanation paragraph(s)...",
-      "key_points": [
-        "Main point 1...",
-        "Main point 2...",
-        "Main point 3..."
-      ]
+      "key_points": ["Main point 1", "Main point 2", "Main point 3"]
     }}
   ]
 }}
-3. Stay strictly focused on each topic using ONLY facts supported by the PDF text.
-4. Do NOT invent information or bring in outside unrelated knowledge.
-5. Preserve technical terminology from the source material.
-6. Do NOT wrap in explanation or extra text outside the JSON object.
 
-PDF TEXT:
+PDF EXCERPT:
 {text_context}"""
 
-        return prompt
+    def _generate_json_text(self, prompt: str) -> str:
+        models = []
+        if self._working_model:
+            models.append(self._working_model)
+        for name in MODEL_CANDIDATES:
+            if name not in models:
+                models.append(name)
 
-    def _parse_summaries_json(self, raw_response: str, expected_topics: list) -> list:
-        """
-        Parses Gemini's JSON summary response and aligns it with expected topics.
-        Omits unreturned/failed topics so that error text is never produced.
-        """
+        last_error = None
+        for model in models:
+            try:
+                text = self._call_generate_content(model, prompt)
+                if text and text.strip():
+                    self._working_model = model
+                    return text
+            except Exception as e:
+                last_error = e
+                err = str(e).lower()
+                print(f"[GeminiProvider] model {model} failed: {e}")
+                if any(term in err for term in ["quota", "resource_exhausted", "429", "rate limit"]):
+                    raise RuntimeError("AI service limit reached. Please try again later.") from e
+                if any(term in err for term in ["invalid api key", "permission_denied", "401", "403"]):
+                    raise RuntimeError("AI configuration or authentication error. Please check your API key.") from e
+                continue
+
+        if last_error:
+            raise RuntimeError(f"AI service error: {last_error}") from last_error
+        raise RuntimeError("No response received from AI.")
+
+    def _call_generate_content(self, model: str, prompt: str) -> str:
+        max_attempts = 2
+        delays = [1.5, 3]
+        config = types.GenerateContentConfig(
+            temperature=0.4,
+            max_output_tokens=MAX_OUTPUT_TOKENS,
+            response_mime_type="application/json",
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        )
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self._client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=config,
+                )
+                text = (getattr(response, "text", None) or "").strip()
+                if text:
+                    return text
+                raise RuntimeError("Received empty response from AI service.")
+            except Exception as e:
+                err = str(e).lower()
+                retryable = any(
+                    term in err
+                    for term in ["503", "unavailable", "overload", "deadline", "504", "timed out", "timeout", "empty response"]
+                )
+                if retryable and attempt < max_attempts:
+                    time.sleep(delays[attempt - 1])
+                    continue
+                raise
+
+    def _parse_summaries_json(self, raw_response: str, expected_topics: list | None) -> list:
         if not raw_response or not raw_response.strip():
-            raise RuntimeError("Summary generation is temporarily unavailable. Please try again.")
+            return []
 
         cleaned = raw_response.strip()
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
@@ -218,154 +248,96 @@ PDF TEXT:
         cleaned = cleaned.strip()
 
         parsed_items = []
+        data = None
         try:
             data = json.loads(cleaned)
-            parsed_items = data.get("summaries", [])
         except json.JSONDecodeError:
-            match = re.search(r'\{"summaries"\s*:\s*\[.*?\]\s*\}', cleaned, re.DOTALL)
+            match = re.search(r"\{.*\}", cleaned, re.DOTALL)
             if match:
                 try:
                     data = json.loads(match.group())
-                    parsed_items = data.get("summaries", [])
                 except json.JSONDecodeError:
-                    pass
+                    match_list = re.search(r"\[.*\]", cleaned, re.DOTALL)
+                    if match_list:
+                        try:
+                            data = json.loads(match_list.group())
+                        except json.JSONDecodeError:
+                            data = None
 
-        if not parsed_items or not isinstance(parsed_items, list):
-            raise RuntimeError("Summary generation is temporarily unavailable. Please try again.")
+        if isinstance(data, list):
+            parsed_items = data
+        elif isinstance(data, dict):
+            parsed_items = data.get("summaries") or data.get("topics") or []
+            if isinstance(parsed_items, dict):
+                parsed_items = [parsed_items]
 
-        parsed_map = {}
+        if not isinstance(parsed_items, list):
+            return []
+
+        normalized = []
         for item in parsed_items:
-            if isinstance(item, dict) and "topic" in item:
-                norm_title = self._normalize_topic(str(item["topic"]))
-                parsed_map[norm_title] = item
+            if isinstance(item, str):
+                continue
+            if not isinstance(item, dict):
+                continue
+            topic = str(item.get("topic") or item.get("title") or "").strip()
+            summary = str(item.get("summary") or item.get("text") or "").strip()
+            raw_kp = item.get("key_points") or item.get("keyPoints") or item.get("points") or []
+            if not isinstance(raw_kp, list):
+                raw_kp = []
+            key_points = [str(k).strip() for k in raw_kp if k and str(k).strip()]
+            if topic and is_valid_summary_text(summary):
+                normalized.append({
+                    "topic": topic,
+                    "summary": summary,
+                    "key_points": key_points,
+                })
 
+        if not normalized:
+            return []
+
+        if not expected_topics:
+            return normalized
+
+        parsed_map = {self._normalize_topic(item["topic"]): item for item in normalized}
         results = []
         for orig_topic in expected_topics:
             norm_topic = self._normalize_topic(orig_topic)
             matched = parsed_map.get(norm_topic)
-
             if not matched:
                 for p_norm, p_dict in parsed_map.items():
-                    if self._topics_are_similar(norm_topic, p_norm, 0.6):
+                    if self._topics_are_similar(norm_topic, p_norm, 0.5):
                         matched = p_dict
                         break
-
             if matched:
-                summary_text = str(matched.get("summary", "")).strip()
-                if summary_text and is_valid_summary_text(summary_text):
-                    raw_kp = matched.get("key_points", [])
-                    kp_list = [str(k).strip() for k in raw_kp if k and str(k).strip()] if isinstance(raw_kp, list) else []
-                    results.append({
-                        "topic": orig_topic,
-                        "summary": summary_text,
-                        "key_points": kp_list
-                    })
-
-        return results
-
-    def _call_gemini_for_topics(self, text_chunk: str, chunk_index: int, total_chunks: int) -> list:
-        """
-        Sends one chunk of text to Gemini and parses the returned JSON topics list.
-        """
-        prompt = self._build_prompt(text_chunk, chunk_index, total_chunks)
-        response = self._call_interactions_with_retry(prompt)
-        raw_text = response.output_text or ""
-        return self._parse_topics_json(raw_text)
-
-    def _build_prompt(self, text_chunk: str, chunk_index: int, total_chunks: int) -> str:
-        chunk_note = ""
-        if total_chunks > 1:
-            chunk_note = f" (this is part {chunk_index} of {total_chunks} of a larger document)"
-
-        prompt = f"""You are an academic topic extractor for a university study assistant app.
-
-Analyze the following PDF text{chunk_note} and identify all major academic or technical topics it covers.
-
-RULES:
-1. Return ONLY a JSON object in this exact format:
-   {{"topics": ["Topic A", "Topic B", "Topic C"]}}
-2. List only specific, meaningful academic/technical topics (e.g., "DC Generator", "Faraday's Law of Induction", "Armature Reaction").
-3. Do NOT include vague phrases like "Introduction", "Summary", "Overview", or page numbers.
-4. Do NOT include author names, university names, or course codes.
-5. Limit your response to at most {MAX_TOPICS_PER_CHUNK} topics.
-6. If the text contains no meaningful academic topics, return: {{"topics": []}}
-7. Do NOT include any explanation, markdown, or text outside the JSON.
-
-PDF TEXT:
-{text_chunk}"""
-
-        return prompt
-
-    def _parse_topics_json(self, raw_response: str) -> list:
-        if not raw_response:
-            return []
-
-        cleaned = raw_response.strip()
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-        cleaned = re.sub(r"\s*```$", "", cleaned)
-        cleaned = cleaned.strip()
-
-        try:
-            data = json.loads(cleaned)
-            topics = data.get("topics", [])
-            if isinstance(topics, list):
-                return [str(t).strip() for t in topics if t and str(t).strip()]
-        except json.JSONDecodeError:
-            match = re.search(r'\{"topics"\s*:\s*\[.*?\]\s*\}', cleaned, re.DOTALL)
-            if match:
-                try:
-                    data = json.loads(match.group())
-                    topics = data.get("topics", [])
-                    return [str(t).strip() for t in topics if t and str(t).strip()]
-                except json.JSONDecodeError:
-                    pass
-
-        print(f"[GeminiProvider] Warning: could not parse topics JSON. Raw response:\n{raw_response[:300]}")
-        return []
-
-    def _split_into_chunks(self, text: str, chunk_size: int) -> list:
-        if len(text) <= chunk_size:
-            return [text]
-
-        chunks = []
-        paragraphs = text.split("\n\n")
-        current_chunk = ""
-
-        for paragraph in paragraphs:
-            if current_chunk and len(current_chunk) + len(paragraph) + 2 > chunk_size:
-                chunks.append(current_chunk.strip())
-                current_chunk = paragraph
+                results.append({
+                    "topic": orig_topic,
+                    "summary": matched["summary"],
+                    "key_points": matched["key_points"],
+                })
             else:
-                current_chunk = (current_chunk + "\n\n" + paragraph).strip() if current_chunk else paragraph
-
-        if current_chunk.strip():
-            chunks.append(current_chunk.strip())
-
-        return chunks if chunks else [text]
-
-    def _deduplicate_topics(self, topics: list) -> list:
-        if not topics:
-            return []
-
-        kept = []
-        kept_normalized = []
-
-        for topic in topics:
-            norm = self._normalize_topic(topic)
-            if not norm:
+                # Keep AI-invented extra topics only after mapping expected ones.
                 continue
 
-            is_duplicate = False
-            for existing_norm in kept_normalized:
-                if self._topics_are_similar(norm, existing_norm, SIMILARITY_THRESHOLD):
-                    is_duplicate = True
-                    break
+        if not results:
+            return normalized
+        return results
 
-            if not is_duplicate:
-                kept.append(topic)
-                kept_normalized.append(norm)
-
-        return kept
+    def _local_fallback_summaries(self, text: str) -> list:
+        excerpt = (text or "").strip()
+        if not excerpt:
+            return []
+        snippet = excerpt[:900].strip()
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", snippet) if s.strip()]
+        key_points = sentences[:5] or [snippet[:180]]
+        return [{
+            "topic": "Document Overview",
+            "summary": snippet if len(snippet) > 40 else (
+                "The PDF excerpt was too short for a detailed AI summary. "
+                "This overview is based on the extracted text that was available."
+            ),
+            "key_points": key_points,
+        }]
 
     def _normalize_topic(self, topic: str) -> str:
         topic = topic.lower()
@@ -376,12 +348,7 @@ PDF TEXT:
     def _topics_are_similar(self, a: str, b: str, threshold: float) -> bool:
         words_a = set(a.split())
         words_b = set(b.split())
-
         if not words_a or not words_b:
             return False
-
-        intersection = words_a & words_b
-        union = words_a | words_b
-        similarity = len(intersection) / len(union)
-
+        similarity = len(words_a & words_b) / len(words_a | words_b)
         return similarity >= threshold
